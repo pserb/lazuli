@@ -67,11 +67,10 @@ domainWarpStyle seed pal =
 
 flowStyle :: Style
 flowStyle seed pal =
-  applyPalette pal
-    $ mask (radialGradient (0.5, 0.5))
-      (fbm 4 seed 0.005)
-      (warp (spiral (0.5, 0.5) 5) (simplex seed 0.003) 40.0
-        $ stripes 0.01 (pi/4))
+  mask (radialGradient (0.5, 0.5))
+    (applyPalette pal $ fbm 4 seed 0.005)
+    (applyPalette pal $ warp (spiral (0.5, 0.5) 5) (simplex seed 0.003) 40.0
+      $ stripes 0.01 (pi/4))
 
 stainedGlassStyle :: Style
 stainedGlassStyle seed pal =

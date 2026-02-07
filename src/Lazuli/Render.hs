@@ -4,9 +4,16 @@ module Lazuli.Render
   , renderToPngBytes
   ) where
 
-import Lazuli.Types (ColorField, colorToPixel)
-import Codec.Picture (Image, PixelRGBA8, generateImage, encodePng, writePng)
+import Lazuli.Types (Color(..), ColorField, clampChannel)
+import Codec.Picture (Image, PixelRGBA8(..), generateImage, encodePng, writePng)
 import qualified Data.ByteString.Lazy as BL
+
+-- | Convert Color to JuicyPixels PixelRGBA8.
+colorToPixel :: Color -> PixelRGBA8
+colorToPixel (Color cr cg cb ca) =
+  PixelRGBA8 (to8 cr) (to8 cg) (to8 cb) (to8 ca)
+  where
+    to8 v = round (clampChannel v * 255)
 
 -- | Render a ColorField to an image. Coordinates are normalized to [0,1].
 render :: Int -> Int -> ColorField -> Image PixelRGBA8

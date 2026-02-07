@@ -1,3 +1,4 @@
+{-# LANGUAGE OverloadedStrings #-}
 module Lazuli.Gallery
   ( generateGallery
   ) where
