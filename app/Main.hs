@@ -6,7 +6,9 @@ import Lazuli.Palette (paletteByName, allPalettes, paletteNames)
 import Lazuli.Style (styleByName, allStyles)
 import Options.Applicative
 import System.Random (randomRIO)
-import System.Exit (exitSuccess)
+import System.Exit (exitSuccess, ExitCode(..))
+import System.Process (readProcessWithExitCode)
+import System.Directory (makeAbsolute)
 import Data.Maybe (fromMaybe)
 import Control.Monad (when)
 import Text.Read (readMaybe)
@@ -134,6 +136,11 @@ main = do
 
   putStrLn $ "Written to " ++ outFile
 
-  -- Handle --set-wallpaper (stretch goal)
-  when (optSetWallpaper opts) $
-    putStrLn "Set wallpaper: not yet supported (requires process dependency)"
+  -- Handle --set-wallpaper
+  when (optSetWallpaper opts) $ do
+    absPath <- makeAbsolute outFile
+    let script = "tell application \"System Events\" to tell every desktop to set picture to POSIX file " ++ show absPath
+    (exitCode, _out, err) <- readProcessWithExitCode "osascript" ["-e", script] ""
+    case exitCode of
+      ExitSuccess   -> putStrLn $ "Wallpaper set to " ++ absPath
+      ExitFailure _ -> putStrLn $ "Failed to set wallpaper: " ++ err
