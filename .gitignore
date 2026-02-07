@@ -33,6 +33,7 @@ output/
 *.png
 *.gif
 !examples/*.png
+gallery/
 
 # Conductor
 .claude/
