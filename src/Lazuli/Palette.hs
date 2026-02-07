@@ -59,16 +59,20 @@ cosinePalette (ar,ag,ab) (br,bg,bb) (cr,cg,cb) (dr,dg,db) t =
   in Color (f t ar br cr dr) (f t ag bg cg dg) (f t ab bb cb db) 1.0
 {-# INLINE cosinePalette #-}
 
+------------------------------------------------------------------------
 -- Named palettes
+------------------------------------------------------------------------
 
+-- Warm muted sunset: deep dusk → dusty rose → warm amber → pale cream
 sunsetPalette :: Palette
 sunsetPalette = fromStops
-  [ (0.0, Color 0.55 0.15 0.05 1)
-  , (0.4, Color 1.0  0.45 0.0  1)
-  , (0.7, Color 0.85 0.1  0.55 1)
-  , (1.0, Color 0.3  0.05 0.35 1)
+  [ (0.0,  Color 0.15 0.08 0.18 1)
+  , (0.3,  Color 0.55 0.22 0.25 1)
+  , (0.6,  Color 0.82 0.48 0.18 1)
+  , (1.0,  Color 0.95 0.85 0.68 1)
   ]
 
+-- Deep ocean: unchanged — dark navy → teal → pale seafoam
 oceanPalette :: Palette
 oceanPalette = fromStops
   [ (0.0, Color 0.02 0.05 0.2  1)
@@ -76,14 +80,16 @@ oceanPalette = fromStops
   , (1.0, Color 0.9  0.95 0.98 1)
   ]
 
+-- Muted neon: deep midnight → subdued purple → dark teal → midnight
 cyberpunkPalette :: Palette
 cyberpunkPalette = fromStops
-  [ (0.0, Color 0.0  0.0  0.0  1)
-  , (0.3, Color 1.0  0.05 0.5  1)
-  , (0.7, Color 0.0  0.9  1.0  1)
-  , (1.0, Color 0.0  0.0  0.0  1)
+  [ (0.0,  Color 0.04 0.02 0.12 1)
+  , (0.3,  Color 0.30 0.08 0.42 1)
+  , (0.7,  Color 0.08 0.35 0.45 1)
+  , (1.0,  Color 0.04 0.02 0.12 1)
   ]
 
+-- Moss: unchanged — dark olive → sage → pale beige
 mossPalette :: Palette
 mossPalette = fromStops
   [ (0.0, Color 0.1  0.25 0.05 1)
@@ -91,14 +97,16 @@ mossPalette = fromStops
   , (1.0, Color 0.95 0.92 0.85 1)
   ]
 
+-- Warm embers: deep char → ember red → burnt sienna → warm gold
 firePalette :: Palette
 firePalette = fromStops
-  [ (0.0, Color 0.0  0.0  0.0  1)
-  , (0.3, Color 0.8  0.05 0.0  1)
-  , (0.6, Color 1.0  0.55 0.0  1)
-  , (1.0, Color 1.0  0.95 0.2  1)
+  [ (0.0,  Color 0.06 0.02 0.01 1)
+  , (0.3,  Color 0.48 0.10 0.04 1)
+  , (0.6,  Color 0.72 0.32 0.08 1)
+  , (1.0,  Color 0.88 0.68 0.35 1)
   ]
 
+-- Ice: unchanged — white → light blue → deep blue → black
 icePalette :: Palette
 icePalette = fromStops
   [ (0.0, Color 1.0  1.0  1.0  1)
@@ -107,54 +115,75 @@ icePalette = fromStops
   , (1.0, Color 0.0  0.0  0.0  1)
   ]
 
-vaporwavePalette :: Palette
-vaporwavePalette = fromStops
-  [ (0.0,  Color 1.0  0.15 0.55 1)
-  , (0.33, Color 0.5  0.1  0.8  1)
-  , (0.66, Color 0.0  0.75 0.7  1)
-  , (1.0,  Color 1.0  0.15 0.55 1)
+-- Dusk: soft lavender → dusty mauve → muted steel → pale lavender
+duskPalette :: Palette
+duskPalette = fromStops
+  [ (0.0,  Color 0.20 0.16 0.30 1)
+  , (0.35, Color 0.42 0.30 0.48 1)
+  , (0.65, Color 0.28 0.38 0.48 1)
+  , (1.0,  Color 0.68 0.62 0.70 1)
   ]
 
+-- Monochrome: black → white
 monochromePalette :: Palette
 monochromePalette = fromStops
   [ (0.0, Color 0.0 0.0 0.0 1)
   , (1.0, Color 1.0 1.0 1.0 1)
   ]
 
+-- Muted thermal: deep black → warm purple → copper → amber → warm white
 infraredPalette :: Palette
 infraredPalette = fromStops
-  [ (0.0,  Color 0.0  0.0  0.0  1)
-  , (0.25, Color 0.45 0.0  0.6  1)
-  , (0.5,  Color 0.85 0.1  0.05 1)
-  , (0.75, Color 1.0  0.9  0.1  1)
-  , (1.0,  Color 1.0  1.0  1.0  1)
+  [ (0.0,  Color 0.03 0.02 0.06 1)
+  , (0.25, Color 0.28 0.06 0.30 1)
+  , (0.5,  Color 0.55 0.18 0.10 1)
+  , (0.75, Color 0.78 0.52 0.18 1)
+  , (1.0,  Color 0.92 0.88 0.80 1)
   ]
 
+-- Soft aurora: deep night → muted green → teal → muted violet
 auroraPalette :: Palette
 auroraPalette = fromStops
-  [ (0.0,  Color 0.05 0.05 0.35 1)
-  , (0.33, Color 0.1  0.8  0.3  1)
-  , (0.66, Color 0.0  0.65 0.6  1)
-  , (1.0,  Color 0.5  0.15 0.7  1)
+  [ (0.0,  Color 0.04 0.05 0.18 1)
+  , (0.3,  Color 0.10 0.40 0.28 1)
+  , (0.6,  Color 0.08 0.35 0.40 1)
+  , (1.0,  Color 0.28 0.15 0.38 1)
   ]
 
--- Cosine palettes (Quilez formula)
-
+-- Magma: warm peach → dark → golden olive (Quilez cosine, 3/4 cycle)
+-- c scaled to 0.75 so pal(0) ≠ pal(1), enabling correct --invert behavior.
 magmaPalette :: Palette
 magmaPalette = cosinePalette
-  (0.5, 0.5, 0.5) (0.5, 0.5, 0.5) (1.0, 0.7, 0.4) (0.0, 0.15, 0.20)
+  (0.5, 0.5, 0.5) (0.5, 0.5, 0.5) (0.75, 0.525, 0.3) (0.0, 0.15, 0.20)
 
+-- Emerald: warm cream → amber → deep blue → sky blue (Quilez cosine, 3/4 cycle)
+-- c scaled to 0.75 so pal(0) ≠ pal(1), enabling correct --invert behavior.
 emeraldPalette :: Palette
 emeraldPalette = cosinePalette
-  (0.5, 0.5, 0.5) (0.5, 0.5, 0.5) (1.0, 1.0, 1.0) (0.0, 0.10, 0.20)
+  (0.5, 0.5, 0.5) (0.5, 0.5, 0.5) (0.75, 0.75, 0.75) (0.0, 0.10, 0.20)
 
+-- Twilight: muted warm-to-cool transition, no hot pinks
+-- Lower amplitude prevents garish saturation
 twilightPalette :: Palette
-twilightPalette = cosinePalette
-  (0.5, 0.5, 0.5) (0.5, 0.5, 0.5) (2.0, 1.0, 0.0) (0.50, 0.20, 0.25)
+twilightPalette = fromStops
+  [ (0.0,  Color 0.52 0.35 0.22 1)
+  , (0.3,  Color 0.42 0.22 0.35 1)
+  , (0.6,  Color 0.18 0.15 0.40 1)
+  , (1.0,  Color 0.08 0.06 0.22 1)
+  ]
 
-rainbowPalette :: Palette
-rainbowPalette = cosinePalette
-  (0.5, 0.5, 0.5) (0.5, 0.5, 0.5) (1.0, 1.0, 1.0) (0.0, 0.33, 0.67)
+-- Slate: cool sophisticated grays with subtle blue undertone
+slatePalette :: Palette
+slatePalette = fromStops
+  [ (0.0,  Color 0.08 0.09 0.12 1)
+  , (0.3,  Color 0.22 0.24 0.30 1)
+  , (0.6,  Color 0.45 0.48 0.55 1)
+  , (1.0,  Color 0.78 0.80 0.84 1)
+  ]
+
+------------------------------------------------------------------------
+-- Registry
+------------------------------------------------------------------------
 
 allPalettes :: [(String, Palette)]
 allPalettes =
@@ -164,14 +193,14 @@ allPalettes =
   , ("moss",       mossPalette)
   , ("fire",       firePalette)
   , ("ice",        icePalette)
-  , ("vaporwave",  vaporwavePalette)
+  , ("dusk",       duskPalette)
   , ("monochrome", monochromePalette)
   , ("infrared",   infraredPalette)
   , ("aurora",     auroraPalette)
   , ("magma",      magmaPalette)
   , ("emerald",    emeraldPalette)
   , ("twilight",   twilightPalette)
-  , ("rainbow",    rainbowPalette)
+  , ("slate",      slatePalette)
   ]
 
 paletteByName :: String -> Maybe Palette

@@ -4,7 +4,7 @@ import Lazuli.Render (renderToFileAA)
 import Lazuli.Gallery (generateGallery)
 import Lazuli.Palette (paletteByName, allPalettes, paletteNames)
 import Lazuli.Style (styleByName, allStyles)
-import Lazuli.Effect (Effect, parseEffect, effectDescriptions)
+import Lazuli.Effect (parseEffect, effectDescriptions)
 import Options.Applicative
 import System.Random (randomRIO)
 import System.Exit (exitSuccess, exitFailure, ExitCode(..))
@@ -37,6 +37,8 @@ data Options = Options
   , optJobs         :: Maybe Int
   , optSamples      :: Int
   , optEffects      :: [String]
+  , optFreq         :: Double
+  , optInvert       :: Bool
   }
 
 optParser :: Parser Options
@@ -58,6 +60,8 @@ optParser = Options
   <*> optional (option auto (long "jobs" <> short 'j' <> metavar "N" <> help "Parallel threads"))
   <*> option auto (long "samples" <> value 4 <> metavar "N" <> help "Anti-aliasing samples (1=off, 4=RGSS)")
   <*> many (strOption (long "effect" <> metavar "EFFECT" <> help "Apply effect (e.g. blur:3)"))
+  <*> option auto (long "freq" <> short 'f' <> value 1.0 <> metavar "DOUBLE" <> help "Frequency multiplier (default 1.0, lower=smoother, higher=denser)")
+  <*> switch (long "invert" <> short 'i' <> help "Flip palette: swap dominant and highlight colors")
 
 parseRes :: ReadM (Int, Int)
 parseRes = eitherReader $ \s -> case break (== 'x') s of
@@ -164,8 +168,9 @@ main = do
       idx <- randomRIO (0, length pNames - 1)
       pure (pNames !! idx)
 
-  let style   = fromMaybe (error $ "Unknown style: " ++ styleName)   (styleByName styleName)
-      palette = fromMaybe (error $ "Unknown palette: " ++ paletteName) (paletteByName paletteName)
+  let styleFn    = fromMaybe (error $ "Unknown style: " ++ styleName)   (styleByName styleName)
+      palettRaw  = fromMaybe (error $ "Unknown palette: " ++ paletteName) (paletteByName paletteName)
+      palette    = if optInvert opts then (\t -> palettRaw (1 - t)) else palettRaw
 
   -- Detect screen resolution for default sizing
   screenRes <- detectScreenResolution
@@ -183,13 +188,14 @@ main = do
 
   -- Anti-aliasing: force 1 sample in preview mode for speed
   let samples = if optPreview opts then 1 else optSamples opts
+      freq = optFreq opts
 
   putStrLn $ "Generating: style=" ++ styleName ++ " palette=" ++ paletteName ++ " seed=" ++ show seed
-  putStrLn $ "Resolution: " ++ show w ++ "x" ++ show h ++ " (samples=" ++ show samples ++ ")"
+  putStrLn $ "Resolution: " ++ show w ++ "x" ++ show h ++ " (samples=" ++ show samples ++ ", freq=" ++ show freq ++ ")"
   unless (null (optEffects opts)) $
     putStrLn $ "Effects: " ++ unwords (optEffects opts)
 
-  let field = style seed palette
+  let field = styleFn seed palette freq
   renderToFileAA effects outFile samples w h field
 
   putStrLn $ "Written to " ++ outFile
