@@ -1,11 +1,12 @@
 module Lazuli.Palette
   ( fromStops
+  , cosinePalette
   , paletteByName
   , allPalettes
   , paletteNames
   ) where
 
-import Lazuli.Types (Color(..), Palette, lerpColor)
+import Lazuli.Types (Color(..), Palette, lerpColor, clampChannel)
 
 -- | Build a palette from color stops: [(position, color)]
 -- Positions are in [0, 1]. The list should be sorted by position.
@@ -21,6 +22,18 @@ fromStops stops t
         ((p1, c1), (p2, c2)) = head $ filter (\((a,_),(b,_)) -> t >= a && t <= b) pairs
         localT = (t - p1) / (p2 - p1)
     in lerpColor localT c1 c2
+
+-- | Cosine palette (Inigo Quilez). Produces infinitely smooth gradients.
+-- color(t) = a + b * cos(2*pi * (c*t + d))
+-- Parameters a, b, c, d are RGB triples controlling bias, amplitude, frequency, phase.
+cosinePalette :: (Double, Double, Double)  -- ^ a (RGB bias)
+              -> (Double, Double, Double)  -- ^ b (RGB amplitude)
+              -> (Double, Double, Double)  -- ^ c (RGB frequency)
+              -> (Double, Double, Double)  -- ^ d (RGB phase)
+              -> Palette
+cosinePalette (ar,ag,ab) (br,bg,bb) (cr,cg,cb) (dr,dg,db) t =
+  let f v a b c d = clampChannel (a + b * cos (2 * pi * (c * v + d)))
+  in Color (f t ar br cr dr) (f t ag bg cg dg) (f t ab bb cb db) 1.0
 
 -- Named palettes
 
@@ -101,6 +114,24 @@ auroraPalette = fromStops
   , (1.0,  Color 0.5  0.15 0.7  1)
   ]
 
+-- Cosine palettes (Quilez formula)
+
+magmaPalette :: Palette
+magmaPalette = cosinePalette
+  (0.5, 0.5, 0.5) (0.5, 0.5, 0.5) (1.0, 0.7, 0.4) (0.0, 0.15, 0.20)
+
+emeraldPalette :: Palette
+emeraldPalette = cosinePalette
+  (0.5, 0.5, 0.5) (0.5, 0.5, 0.5) (1.0, 1.0, 1.0) (0.0, 0.10, 0.20)
+
+twilightPalette :: Palette
+twilightPalette = cosinePalette
+  (0.5, 0.5, 0.5) (0.5, 0.5, 0.5) (2.0, 1.0, 0.0) (0.50, 0.20, 0.25)
+
+rainbowPalette :: Palette
+rainbowPalette = cosinePalette
+  (0.5, 0.5, 0.5) (0.5, 0.5, 0.5) (1.0, 1.0, 1.0) (0.0, 0.33, 0.67)
+
 allPalettes :: [(String, Palette)]
 allPalettes =
   [ ("sunset",     sunsetPalette)
@@ -113,6 +144,10 @@ allPalettes =
   , ("monochrome", monochromePalette)
   , ("infrared",   infraredPalette)
   , ("aurora",     auroraPalette)
+  , ("magma",      magmaPalette)
+  , ("emerald",    emeraldPalette)
+  , ("twilight",   twilightPalette)
+  , ("rainbow",    rainbowPalette)
   ]
 
 paletteByName :: String -> Maybe Palette

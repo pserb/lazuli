@@ -1,6 +1,6 @@
 module Main where
 
-import Lazuli.Render (renderToFile)
+import Lazuli.Render (renderToFileAA)
 import Lazuli.Gallery (generateGallery)
 import Lazuli.Palette (paletteByName, allPalettes, paletteNames)
 import Lazuli.Style (styleByName, allStyles)
@@ -30,6 +30,7 @@ data Options = Options
   , optListPalettes :: Bool
   , optSetWallpaper :: Bool
   , optJobs         :: Maybe Int
+  , optSamples      :: Int
   }
 
 optParser :: Parser Options
@@ -48,6 +49,7 @@ optParser = Options
   <*> switch (long "list-palettes" <> help "List available palettes")
   <*> switch (long "set-wallpaper" <> help "Set as desktop wallpaper (macOS)")
   <*> optional (option auto (long "jobs" <> short 'j' <> metavar "N" <> help "Parallel threads"))
+  <*> option auto (long "samples" <> value 4 <> metavar "N" <> help "Anti-aliasing samples (1=off, 4=RGSS)")
 
 parseRes :: ReadM (Int, Int)
 parseRes = eitherReader $ \s -> case break (== 'x') s of
@@ -126,11 +128,14 @@ main = do
 
   let outFile = fromMaybe ("lazuli-" ++ show seed ++ ".png") (optOutput opts)
 
+  -- Anti-aliasing: force 1 sample in preview mode for speed
+  let samples = if optPreview opts then 1 else optSamples opts
+
   putStrLn $ "Generating: style=" ++ styleName ++ " palette=" ++ paletteName ++ " seed=" ++ show seed
-  putStrLn $ "Resolution: " ++ show w ++ "x" ++ show h
+  putStrLn $ "Resolution: " ++ show w ++ "x" ++ show h ++ " (samples=" ++ show samples ++ ")"
 
   let field = style seed palette
-  renderToFile outFile w h field
+  renderToFileAA outFile samples w h field
 
   putStrLn $ "Written to " ++ outFile
 
