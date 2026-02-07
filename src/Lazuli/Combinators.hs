@@ -7,6 +7,7 @@ module Lazuli.Combinators
   , remap
   , absField
   , power
+  , scalarBlend
     -- Spatial transforms (Field a -> Field a)
   , rotate
   , scale
@@ -24,6 +25,8 @@ module Lazuli.Combinators
   , multiply
   , screen
   , over
+    -- Post-processing
+  , vignette
   ) where
 
 import Lazuli.Types (Color (..), ColorField, Field, ScalarField, lerpColor)
@@ -61,6 +64,13 @@ absField f = \p -> abs (f p)
 -- | Power: raise values to a power (contrast control)
 power :: Double -> ScalarField -> ScalarField
 power n f = \p -> f p ** n
+
+-- | Blend two scalar fields using a weight field.
+-- scalarBlend w f1 f2: where w=0 returns f1, where w=1 returns f2.
+scalarBlend :: ScalarField -> ScalarField -> ScalarField -> ScalarField
+scalarBlend w f1 f2 = \p ->
+  let t = max 0 (min 1 (w p))
+  in f1 p + t * (f2 p - f1 p)
 
 --------------------------------------------------------------------------------
 -- Spatial transforms (Field a -> Field a)
@@ -174,3 +184,23 @@ over fg bg = \p ->
       outG = if outA == 0 then 0 else (fg' * fa' + bg' * ba' * (1 - fa')) / outA
       outB = if outA == 0 then 0 else (fb' * fa' + bb' * ba' * (1 - fa')) / outA
   in Color outR outG outB outA
+
+--------------------------------------------------------------------------------
+-- Post-processing
+--------------------------------------------------------------------------------
+
+-- | Radial edge darkening. Strength 0 = no effect, 1 = full black at corners.
+-- Typical use: vignette 0.35 colorField
+vignette :: Double -> ColorField -> ColorField
+vignette strength cf = \(x, y) ->
+  let dx = x - 0.5
+      dy = y - 0.5
+      dist = sqrt (dx * dx + dy * dy)
+      maxDist = 0.7071  -- sqrt(0.5), corner distance
+      t = min 1.0 (dist / maxDist)
+      -- Smooth falloff: no darkening in center, gradual toward edges
+      s = max 0 (min 1 ((t - 0.3) / (1.0 - 0.3)))
+      falloff = s * s * (3 - 2 * s)
+      darkening = 1.0 - strength * falloff
+      Color cr cg cb ca = cf (x, y)
+  in Color (cr * darkening) (cg * darkening) (cb * darkening) ca

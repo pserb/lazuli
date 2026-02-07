@@ -4,9 +4,13 @@ module Lazuli.Noise
   , voronoi
   , fbm
   , ridged
+  , turbulence
+  , ridgedFbm
+  , worleyF2F1
   ) where
 
 import Data.Bits (xor, shiftR, (.&.))
+import Data.List (foldl')
 import Data.Vector.Unboxed (Vector)
 import qualified Data.Vector.Unboxed as V
 import qualified Data.Vector.Unboxed.Mutable as MV
@@ -78,6 +82,65 @@ ridged :: Seed -> Double -> ScalarField
 ridged seed freq = \(x, y) ->
   let raw = simplex seed freq (x, y)
   in 1.0 - abs (2.0 * raw - 1.0)
+
+-- | Turbulence — absolute-value fBM. Creates sharp valleys at zero crossings.
+-- Ideal for marble/agate veining when fed into sin().
+-- Output normalized to [0, 1].
+turbulence :: Int -> Seed -> Double -> ScalarField
+turbulence octaves seed freq = \(x, y) ->
+  let layers = [ abs (2.0 * simplex (seed + i) (freq * (2 ^^ i)) (x, y) - 1.0)
+                   * (0.5 ^^ i)
+               | i <- [0 .. octaves - 1] ]
+      total = sum layers
+      maxVal = sum [ 0.5 ^^ i | i <- [0 .. octaves - 1] :: [Int] ]
+  in clamp01 (total / maxVal)
+
+-- | Multi-octave ridged noise with feedback weighting.
+-- Ridges self-reinforce while valleys become smooth, creating branching vein networks.
+-- Parameters: octaves, gain (feedback strength), seed, frequency.
+-- Output normalized to [0, 1].
+ridgedFbm :: Int -> Double -> Seed -> Double -> ScalarField
+ridgedFbm octaves gain seed freq = \(x, y) ->
+  let go _ _ 0 sig = sig
+      go w f i sig =
+        let raw = simplex (seed + octaves - i) f (x, y)
+            n0  = 1.0 - abs (2.0 * raw - 1.0)  -- ridge fold
+            n1  = n0 * n0                         -- sharpen
+            n2  = n1 * w                           -- apply feedback weight
+            amp = 0.5 ^^ (octaves - i)
+            w'  = clamp01 (n2 * gain)
+        in go w' (f * 2.0) (i - 1) (sig + n2 * amp)
+      total = go 1.0 freq octaves 0.0
+      maxVal = sum [ 0.5 ^^ i | i <- [0 .. octaves - 1] :: [Int] ]
+  in clamp01 (total / maxVal)
+
+-- | F2-F1 Voronoi edge detection.
+-- Returns the difference between second-nearest and nearest cell distances.
+-- Value is 0 at cell edges, larger inside cells.
+-- Output normalized to [0, 1].
+worleyF2F1 :: Seed -> Int -> ScalarField
+worleyF2F1 seed n = \(x, y) ->
+  let nf = fromIntegral n
+      cx = floor (x * nf) :: Int
+      cy = floor (y * nf) :: Int
+      dists =
+        [ let (px, py) = hash2D seed ix iy
+              rx = (fromIntegral ix + px) / nf
+              ry = (fromIntegral iy + py) / nf
+              dx = x - rx
+              dy = y - ry
+          in sqrt (dx * dx + dy * dy)
+        | ix <- [cx - 1 .. cx + 1]
+        , iy <- [cy - 1 .. cy + 1]
+        ]
+      -- Find two smallest distances
+      (f1, f2) = foldl' updateF1F2 (1e10, 1e10) dists
+  in clamp01 ((f2 - f1) * nf)
+  where
+    updateF1F2 (d1, d2) d
+      | d < d1    = (d, d1)
+      | d < d2    = (d1, d)
+      | otherwise = (d1, d2)
 
 ------------------------------------------------------------------------
 -- Internal: Simplex 2D
@@ -189,6 +252,3 @@ hash2D seed ix iy =
 ------------------------------------------------------------------------
 -- Utility
 ------------------------------------------------------------------------
-
-clamp01 :: Double -> Double
-clamp01 = max 0 . min 1
