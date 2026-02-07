@@ -21,8 +21,8 @@ data Options = Options
   { optStyle        :: Maybe String
   , optPalette      :: Maybe String
   , optSeed         :: Maybe Int
-  , optWidth        :: Int
-  , optHeight       :: Int
+  , optWidth        :: Maybe Int
+  , optHeight       :: Maybe Int
   , optRes          :: Maybe (Int, Int)
   , optOutput       :: Maybe FilePath
   , optPreview      :: Bool
@@ -39,8 +39,8 @@ optParser = Options
   <$> optional (strOption (long "style" <> short 's' <> metavar "STYLE" <> help "Style name"))
   <*> optional (strOption (long "palette" <> short 'p' <> metavar "PALETTE" <> help "Palette name"))
   <*> optional (option auto (long "seed" <> short 'S' <> metavar "INT" <> help "Random seed"))
-  <*> option auto (long "width" <> value 1920 <> help "Output width")
-  <*> option auto (long "height" <> value 1080 <> help "Output height")
+  <*> optional (option auto (long "width" <> metavar "PX" <> help "Output width (default: screen width)"))
+  <*> optional (option auto (long "height" <> metavar "PX" <> help "Output height (default: screen height)"))
   <*> optional (option parseRes (long "res" <> metavar "WxH" <> help "Resolution (e.g., 1920x1080)"))
   <*> optional (strOption (long "output" <> short 'o' <> metavar "FILE" <> help "Output file"))
   <*> switch (long "preview" <> help "Render at 1/4 resolution")
@@ -57,6 +57,33 @@ parseRes = eitherReader $ \s -> case break (== 'x') s of
     (Just wn, Just hn) -> Right (wn, hn)
     _                  -> Left "Expected WxH format (e.g., 1920x1080)"
   _ -> Left "Expected WxH format (e.g., 1920x1080)"
+
+------------------------------------------------------------------------
+-- Screen resolution detection (macOS)
+------------------------------------------------------------------------
+
+-- | Detect the main screen's native resolution on macOS via NSScreen.
+-- Returns Nothing if detection fails (non-macOS, headless, etc.).
+detectScreenResolution :: IO (Maybe (Int, Int))
+detectScreenResolution = do
+  let script = concat
+        [ "ObjC.import('AppKit');"
+        , "var s = $.NSScreen.mainScreen;"
+        , "var f = s.frame;"
+        , "var sf = s.backingScaleFactor;"
+        , "'' + Math.round(f.size.width * sf) + 'x' + Math.round(f.size.height * sf)"
+        ]
+  (exitCode, out, _err) <- readProcessWithExitCode "osascript" ["-l", "JavaScript", "-e", script] ""
+  pure $ case exitCode of
+    ExitSuccess   -> parseWxH (strip out)
+    ExitFailure _ -> Nothing
+  where
+    strip = reverse . dropWhile (== '\n') . reverse
+    parseWxH s = case break (== 'x') s of
+      (w, 'x':h) -> case (readMaybe w, readMaybe h) of
+        (Just wn, Just hn) | wn > 0 && hn > 0 -> Just (wn, hn)
+        _ -> Nothing
+      _ -> Nothing
 
 ------------------------------------------------------------------------
 -- Main
@@ -118,10 +145,14 @@ main = do
   let style   = fromMaybe (error $ "Unknown style: " ++ styleName)   (styleByName styleName)
       palette = fromMaybe (error $ "Unknown palette: " ++ paletteName) (paletteByName paletteName)
 
-  -- Resolve resolution: --res overrides --width/--height, --preview quarters it
+  -- Detect screen resolution for default sizing
+  screenRes <- detectScreenResolution
+  let (defaultW, defaultH) = fromMaybe (1920, 1080) screenRes
+
+  -- Resolve resolution: --res overrides --width/--height, fallback to screen
   let (baseW, baseH) = case optRes opts of
         Just (rw, rh) -> (rw, rh)
-        Nothing       -> (optWidth opts, optHeight opts)
+        Nothing       -> (fromMaybe defaultW (optWidth opts), fromMaybe defaultH (optHeight opts))
       (w, h) = if optPreview opts
                then (baseW `div` 4, baseH `div` 4)
                else (baseW, baseH)
