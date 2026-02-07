@@ -114,10 +114,13 @@ main = do
     Just n -> do
       numCores <- getNumProcessors
       let jobs = fromMaybe numCores (optJobs opts)
-          outPath = fromMaybe "gallery.html" (optOutput opts)
+          outPath = fromMaybe "gallery/gallery.html" (optOutput opts)
       putStrLn $ "Rendering " ++ show n ++ " thumbnails with " ++ show jobs ++ " threads..."
       generateGallery n allStyles allPalettes 480 270 jobs outPath
-      putStrLn $ "Gallery written to " ++ outPath
+      absPath <- makeAbsolute outPath
+      putStrLn $ "Gallery written to " ++ absPath
+      _ <- readProcessWithExitCode "open" [absPath] ""
+      pure ()
       exitSuccess
     Nothing -> pure ()
 
