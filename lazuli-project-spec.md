@@ -1,11 +1,11 @@
-# wallgen — A Haskell-Powered Generative Wallpaper Engine
+# lazuli — A Haskell-Powered Generative Wallpaper Engine
 
 ## Project Summary
 
-**wallgen** is a CLI tool that generates unique, high-resolution wallpapers from pure mathematical functions. Wallpapers are defined as compositions of noise functions, gradients, geometric patterns, and color palettes — all expressed as pure Haskell combinators. The user runs a command like:
+**lazuli** is a CLI tool that generates unique, high-resolution wallpapers from pure mathematical functions. Wallpapers are defined as compositions of noise functions, gradients, geometric patterns, and color palettes — all expressed as pure Haskell combinators. The user runs a command like:
 
 ```
-wallgen --style voronoi --palette sunset --seed 42 --res 3840x2160 -o wallpaper.png
+lazuli --style voronoi --palette sunset --seed 42 --res 3840x2160 -o wallpaper.png
 ```
 
 ...and gets a beautiful, deterministic, one-of-a-kind wallpaper as a PNG.
@@ -313,28 +313,28 @@ Built with `optparse-applicative`.
 
 ```bash
 # Generate a single wallpaper
-wallgen --style voronoi --palette sunset --seed 42 --res 3840x2160 -o wallpaper.png
+lazuli --style voronoi --palette sunset --seed 42 --res 3840x2160 -o wallpaper.png
 
 # Random everything
-wallgen --random -o surprise.png
+lazuli --random -o surprise.png
 
 # Quick preview at low resolution
-wallgen --style nebula --palette cyberpunk --seed 7 --preview
+lazuli --style nebula --palette cyberpunk --seed 7 --preview
 
 # Gallery mode: generate N random wallpapers as a thumbnail grid
-wallgen --gallery 20 -o gallery.html
+lazuli --gallery 20 -o gallery.html
 
 # List available styles and palettes
-wallgen --list-styles
-wallgen --list-palettes
+lazuli --list-styles
+lazuli --list-palettes
 ```
 
 ### Full CLI Options
 
 ```
-wallgen - Generative wallpaper engine
+lazuli - Generative wallpaper engine
 
-Usage: wallgen [OPTIONS]
+Usage: lazuli [OPTIONS]
 
 Options:
   -s, --style STYLE        Style name (voronoi, nebula, crystal, domainwarp,
@@ -344,7 +344,7 @@ Options:
   -S, --seed INT           Random seed for deterministic generation
                             [default: random]
   -r, --res WxH            Output resolution [default: 1920x1080]
-  -o, --output FILE        Output file path [default: wallgen-{seed}.png]
+  -o, --output FILE        Output file path [default: lazuli-{seed}.png]
       --preview            Render at 1/4 resolution for quick preview
       --random             Randomize style, palette, and seed
       --gallery N          Generate N random wallpapers as an HTML gallery
@@ -367,18 +367,18 @@ This generates an HTML page with a grid of thumbnail wallpapers. Each thumbnail 
 <!-- The full CLI command is shown below each thumbnail for reproducibility -->
 ```
 
-This is the single most important feature for demo day. You run `wallgen --gallery 20`, open the HTML file, and you have an instant art exhibition.
+This is the single most important feature for demo day. You run `lazuli --gallery 20`, open the HTML file, and you have an instant art exhibition.
 
 ---
 
 ## Project Structure
 
 ```
-wallgen/
+lazuli/
 ├── app/
 │   └── Main.hs                 -- CLI entry point (optparse-applicative)
 ├── src/
-│   └── WallGen/
+│   └── Lazuli/
 │       ├── Types.hs            -- Color, Field, ScalarField, ColorField
 │       ├── Noise.hs            -- Perlin, simplex, worley, voronoi
 │       ├── Patterns.hs         -- Geometric: stripes, checkerboard, ripple, spiral, gradients
@@ -388,7 +388,7 @@ wallgen/
 │       ├── Render.hs           -- Parallel pixel evaluation, PNG output via JuicyPixels
 │       └── Gallery.hs          -- HTML gallery generation
 ├── palettes/                   -- Optional: palette definitions as YAML/JSON for easy editing
-├── wallgen.cabal
+├── lazuli.cabal
 ├── README.md
 └── examples/                   -- Pre-generated example wallpapers for the README
 ```
@@ -433,7 +433,7 @@ No exotic dependencies. Everything is on Stackage.
 
 ### Day 1 — Morning (4 hours): Core Engine
 
-**Goal**: `wallgen --style simplex --palette monochrome --seed 42 --res 800x600 -o test.png` works and produces a visible image.
+**Goal**: `lazuli --style simplex --palette monochrome --seed 42 --res 800x600 -o test.png` works and produces a visible image.
 
 1. **Types.hs** — define `Color`, `Field`, `ScalarField`, `ColorField` (~15 min)
 2. **Noise.hs** — implement simplex noise from scratch or port a known algorithm. This is the hardest single piece. (~2 hours)
@@ -454,7 +454,7 @@ No exotic dependencies. Everything is on Stackage.
 4. **Style.hs** — compose 4 named styles: `voronoi`, `nebula`, `domainwarp`, `crystal` (~30 min)
 5. **Palette.hs** — add remaining palettes to reach 8 total (~15 min)
 
-**Milestone check**: `wallgen --style domainwarp --palette cyberpunk --seed 42 --res 1920x1080` produces a stunning wallpaper. This is the moment you know you have a good project.
+**Milestone check**: `lazuli --style domainwarp --palette cyberpunk --seed 42 --res 1920x1080` produces a stunning wallpaper. This is the moment you know you have a good project.
 
 ### Day 2 — Morning (4 hours): Polish + Gallery
 
@@ -465,7 +465,7 @@ No exotic dependencies. Everything is on Stackage.
 3. **Performance** — add parallel rendering with `parMap` or `parVector`. On a 4-core machine, 4x speedup on large renders. (~45 min)
 4. **Style.hs** — add 2-3 more styles: `stainedglass`, `flow`, `aurora` (~45 min)
 
-**Milestone check**: `wallgen --gallery 20` produces a gorgeous HTML page with 20 unique wallpapers.
+**Milestone check**: `lazuli --gallery 20` produces a gorgeous HTML page with 20 unique wallpapers.
 
 ### Day 2 — Afternoon (4 hours): Stretch Goals + Demo Prep
 
@@ -484,7 +484,7 @@ Pick 1-2 stretch goals from the list below, then prepare for demo.
 Interpolate a parameter (seed drift, warp strength, rotation) over time. Output frames or a GIF.
 
 ```bash
-wallgen --style domainwarp --palette sunset --seed 42 --animate --frames 120 --fps 30 -o anim.gif
+lazuli --style domainwarp --palette sunset --seed 42 --animate --frames 120 --fps 30 -o anim.gif
 ```
 
 Implementation: render each frame as a `ColorField` where one parameter varies with frame number. Use JuicyPixels or `ffmpeg` for GIF/video assembly. This produces mesmerizing looping animations.
@@ -493,7 +493,7 @@ Implementation: render each frame as a `ColorField` where one parameter varies w
 A local web server (scotty) that serves a low-res preview and has controls for style, palette, seed, and warp parameters. Every change re-renders and pushes the new image to the browser.
 
 ```bash
-wallgen --live --port 8080
+lazuli --live --port 8080
 ```
 
 Opens `localhost:8080` with sliders and dropdowns. Great for exploration and demo.
@@ -510,13 +510,13 @@ Small feature, big quality-of-life impact.
 Accept a `--palette-from image.jpg` flag. Extract dominant colors via k-means clustering (5-7 colors), sort by luminance, and use as a palette.
 
 ```bash
-wallgen --style nebula --palette-from my-photo.jpg --seed 42
+lazuli --style nebula --palette-from my-photo.jpg --seed 42
 ```
 
 "Make me a wallpaper that matches the colors of this sunset photo I took."
 
 ### E. Config File for Daily Wallpapers
-A `~/.config/wallgen/config.toml`:
+A `~/.config/lazuli/config.toml`:
 
 ```toml
 [daily]
@@ -531,7 +531,7 @@ Pair with a systemd timer or cron job. Wake up to a new unique wallpaper every d
 
 ### F. Multi-Monitor Support
 ```bash
-wallgen --monitors 2 --layout side-by-side --res 3840x2160+3840x2160
+lazuli --monitors 2 --layout side-by-side --res 3840x2160+3840x2160
 ```
 
 Generates a single ultra-wide image where the composition is aware of the monitor split — e.g., a gradient that flows naturally across both screens rather than being awkwardly cropped.
@@ -595,11 +595,11 @@ This is critical for reproducibility — the gallery can show the exact command 
 
 ## What to Show at the Demo
 
-1. **The gallery** — `wallgen --gallery 20` opened in a browser. 20 unique wallpapers in a grid. Instant visual impact.
-2. **Live generation** — run a few `wallgen` commands live, show wallpapers appearing in a few seconds.
+1. **The gallery** — `lazuli --gallery 20` opened in a browser. 20 unique wallpapers in a grid. Instant visual impact.
+2. **Live generation** — run a few `lazuli` commands live, show wallpapers appearing in a few seconds.
 3. **The code** — show a style definition side-by-side with its output. "This is the entire program that generated this image" is a powerful moment.
-4. **Set as wallpaper** — `wallgen --random --set-wallpaper` and watch the desktop change live.
-5. **Reproducibility** — "every image has a seed, here's how to get it back: `wallgen --style nebula --palette sunset --seed 42`" — run it, same image appears.
+4. **Set as wallpaper** — `lazuli --random --set-wallpaper` and watch the desktop change live.
+5. **Reproducibility** — "every image has a seed, here's how to get it back: `lazuli --style nebula --palette sunset --seed 42`" — run it, same image appears.
 
 ---
 
