@@ -9,6 +9,7 @@ module Lazuli.Render
   ) where
 
 import Lazuli.Types (Color(..), ColorField, clampChannel, addColors, scaleColor)
+import Lazuli.Effect (Effect, applyEffects)
 import Codec.Picture (Image(..), PixelRGBA8(..), encodePng, writePng)
 import qualified Data.ByteString.Lazy as BL
 import Data.List (foldl')
@@ -127,10 +128,12 @@ generateImageSeq w h pixelFn = do
 -- Render functions
 ------------------------------------------------------------------------
 
--- | Render a ColorField to an image. Coordinates are normalized to [0,1].
+-- | Render a ColorField to an image with effects. Coordinates are normalized to [0,1].
 -- Single sample per pixel (no anti-aliasing).
-render :: Int -> Int -> ColorField -> IO (Image PixelRGBA8)
-render w h field = generateImagePar w h pixelAt
+render :: [Effect] -> Int -> Int -> ColorField -> IO (Image PixelRGBA8)
+render effects w h field = do
+  img <- generateImagePar w h pixelAt
+  return $ applyEffects effects img
   where
     pixelAt :: Int -> Int -> PixelRGBA8
     pixelAt !x !y =
@@ -138,12 +141,14 @@ render w h field = generateImagePar w h pixelAt
           ny = fromIntegral y / fromIntegral h :: Double
       in colorToPixel (field (nx, ny))
 
--- | Render with RGSS 4-rook anti-aliasing.
+-- | Render with RGSS 4-rook anti-aliasing and effects.
 -- samples=1: single center sample (no AA). samples=4: RGSS 4-rook.
-renderAA :: Int -> Int -> Int -> ColorField -> IO (Image PixelRGBA8)
-renderAA samples w h field
-  | samples <= 1 = render w h field
-  | otherwise = generateImagePar w h pixelAt
+renderAA :: [Effect] -> Int -> Int -> Int -> ColorField -> IO (Image PixelRGBA8)
+renderAA effects samples w h field
+  | samples <= 1 = render effects w h field
+  | otherwise = do
+      img <- generateImagePar w h pixelAt
+      return $ applyEffects effects img
   where
     wf = fromIntegral w :: Double
     hf = fromIntegral h :: Double
@@ -162,25 +167,25 @@ renderAA samples w h field
       in colorToPixel (scaleColor (1.0 / n) total)
 
 -- | Render and write to a PNG file.
-renderToFile :: FilePath -> Int -> Int -> ColorField -> IO ()
-renderToFile path w h field = do
-  img <- render w h field
+renderToFile :: [Effect] -> FilePath -> Int -> Int -> ColorField -> IO ()
+renderToFile effects path w h field = do
+  img <- render effects w h field
   writePng path img
 
 -- | Render with AA and write to a PNG file.
-renderToFileAA :: FilePath -> Int -> Int -> Int -> ColorField -> IO ()
-renderToFileAA path samples w h field = do
-  img <- renderAA samples w h field
+renderToFileAA :: [Effect] -> FilePath -> Int -> Int -> Int -> ColorField -> IO ()
+renderToFileAA effects path samples w h field = do
+  img <- renderAA effects samples w h field
   writePng path img
 
 -- | Render to PNG bytes (for embedding or gallery use).
-renderToPngBytes :: Int -> Int -> ColorField -> IO BL.ByteString
-renderToPngBytes w h field = do
-  img <- render w h field
+renderToPngBytes :: [Effect] -> Int -> Int -> ColorField -> IO BL.ByteString
+renderToPngBytes effects w h field = do
+  img <- render effects w h field
   return $ encodePng img
 
 -- | Render with AA to PNG bytes.
-renderToPngBytesAA :: Int -> Int -> Int -> ColorField -> IO BL.ByteString
-renderToPngBytesAA samples w h field = do
-  img <- renderAA samples w h field
+renderToPngBytesAA :: [Effect] -> Int -> Int -> Int -> ColorField -> IO BL.ByteString
+renderToPngBytesAA effects samples w h field = do
+  img <- renderAA effects samples w h field
   return $ encodePng img

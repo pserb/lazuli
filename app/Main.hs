@@ -4,13 +4,14 @@ import Lazuli.Render (renderToFileAA)
 import Lazuli.Gallery (generateGallery)
 import Lazuli.Palette (paletteByName, allPalettes, paletteNames)
 import Lazuli.Style (styleByName, allStyles)
+import Lazuli.Effect (parseEffect, effectDescriptions)
 import Options.Applicative
 import System.Random (randomRIO)
-import System.Exit (exitSuccess, ExitCode(..))
+import System.Exit (exitSuccess, exitFailure, ExitCode(..))
 import System.Process (readProcessWithExitCode)
 import System.Directory (makeAbsolute)
 import Data.Maybe (fromMaybe)
-import Control.Monad (when)
+import Control.Monad (when, unless)
 import Text.Read (readMaybe)
 import GHC.Conc (getNumProcessors)
 
@@ -31,9 +32,11 @@ data Options = Options
   , optGallery      :: Maybe Int
   , optListStyles   :: Bool
   , optListPalettes :: Bool
+  , optListEffects  :: Bool
   , optSetWallpaper :: Bool
   , optJobs         :: Maybe Int
   , optSamples      :: Int
+  , optEffects      :: [String]
   , optFreq         :: Double
   , optInvert       :: Bool
   }
@@ -52,9 +55,11 @@ optParser = Options
   <*> optional (option auto (long "gallery" <> metavar "N" <> help "Generate N wallpapers as HTML gallery"))
   <*> switch (long "list-styles" <> help "List available styles")
   <*> switch (long "list-palettes" <> help "List available palettes")
+  <*> switch (long "list-effects" <> help "List available effects")
   <*> switch (long "set-wallpaper" <> help "Set as desktop wallpaper (macOS)")
   <*> optional (option auto (long "jobs" <> short 'j' <> metavar "N" <> help "Parallel threads"))
   <*> option auto (long "samples" <> value 4 <> metavar "N" <> help "Anti-aliasing samples (1=off, 4=RGSS)")
+  <*> many (strOption (long "effect" <> metavar "EFFECT" <> help "Apply effect (e.g. blur:3)"))
   <*> option auto (long "freq" <> short 'f' <> value 1.0 <> metavar "DOUBLE" <> help "Frequency multiplier (default 1.0, lower=smoother, higher=denser)")
   <*> switch (long "invert" <> short 'i' <> help "Flip palette: swap dominant and highlight colors")
 
@@ -101,6 +106,13 @@ main = do
   opts <- execParser (info (optParser <**> helper)
     (fullDesc <> progDesc "Lazuli - generative wallpaper engine"))
 
+  -- Parse effects first to catch errors early
+  effects <- case mapM parseEffect (optEffects opts) of
+    Right effs -> pure effs
+    Left err   -> do
+      putStrLn $ "Error parsing effects: " ++ err
+      exitFailure
+
   -- Handle --list-styles
   when (optListStyles opts) $ do
     putStrLn "Available styles:"
@@ -113,6 +125,12 @@ main = do
     mapM_ putStrLn paletteNames
     exitSuccess
 
+  -- Handle --list-effects
+  when (optListEffects opts) $ do
+    putStrLn "Available effects:"
+    mapM_ (\(name, desc) -> putStrLn $ "  " ++ name ++ " - " ++ desc) effectDescriptions
+    exitSuccess
+
   -- Handle --gallery
   case optGallery opts of
     Just n -> do
@@ -120,7 +138,7 @@ main = do
       let jobs = fromMaybe numCores (optJobs opts)
           outPath = fromMaybe "gallery/gallery.html" (optOutput opts)
       putStrLn $ "Rendering " ++ show n ++ " thumbnails with " ++ show jobs ++ " threads..."
-      generateGallery n allStyles allPalettes 480 270 jobs outPath
+      generateGallery n allStyles allPalettes effects 480 270 jobs outPath
       absPath <- makeAbsolute outPath
       putStrLn $ "Gallery written to " ++ absPath
       _ <- readProcessWithExitCode "open" [absPath] ""
@@ -150,7 +168,7 @@ main = do
       idx <- randomRIO (0, length pNames - 1)
       pure (pNames !! idx)
 
-  let style      = fromMaybe (error $ "Unknown style: " ++ styleName)   (styleByName styleName)
+  let styleFn    = fromMaybe (error $ "Unknown style: " ++ styleName)   (styleByName styleName)
       palettRaw  = fromMaybe (error $ "Unknown palette: " ++ paletteName) (paletteByName paletteName)
       palette    = if optInvert opts then (\t -> palettRaw (1 - t)) else palettRaw
 
@@ -170,14 +188,15 @@ main = do
 
   -- Anti-aliasing: force 1 sample in preview mode for speed
   let samples = if optPreview opts then 1 else optSamples opts
-
-  let freq = optFreq opts
+      freq = optFreq opts
 
   putStrLn $ "Generating: style=" ++ styleName ++ " palette=" ++ paletteName ++ " seed=" ++ show seed
   putStrLn $ "Resolution: " ++ show w ++ "x" ++ show h ++ " (samples=" ++ show samples ++ ", freq=" ++ show freq ++ ")"
+  unless (null (optEffects opts)) $
+    putStrLn $ "Effects: " ++ unwords (optEffects opts)
 
-  let field = style seed palette freq
-  renderToFileAA outFile samples w h field
+  let field = styleFn seed palette freq
+  renderToFileAA effects outFile samples w h field
 
   putStrLn $ "Written to " ++ outFile
 
