@@ -7,21 +7,44 @@ module Lazuli.Palette
   ) where
 
 import Lazuli.Types (Color(..), Palette, lerpColor, clampChannel)
+import qualified Data.Vector.Unboxed as VU
 
 -- | Build a palette from color stops: [(position, color)]
 -- Positions are in [0, 1]. The list should be sorted by position.
--- For t between two stops, linearly interpolate between their colors.
--- For t <= first stop position, return first color.
--- For t >= last stop position, return last color.
+-- Uses binary search for O(log n) lookup instead of O(n) list traversal.
 fromStops :: [(Double, Color)] -> Palette
-fromStops stops t
-  | t <= fst (head stops) = snd (head stops)
-  | t >= fst (last stops) = snd (last stops)
-  | otherwise =
-    let pairs = zip stops (tail stops)
-        ((p1, c1), (p2, c2)) = head $ filter (\((a,_),(b,_)) -> t >= a && t <= b) pairs
-        localT = (t - p1) / (p2 - p1)
-    in lerpColor localT c1 c2
+fromStops stops = let
+    n = length stops
+    positions = VU.fromListN n (map fst stops)
+    -- Store colors as flat (r,g,b,a) tuples in an unboxed vector
+    colors = VU.fromListN n (map (\(_, Color cr cg cb ca) -> (cr, cg, cb, ca)) stops)
+    getColor i = let (cr, cg, cb, ca) = VU.unsafeIndex colors i in Color cr cg cb ca
+  in \t ->
+    if t <= VU.unsafeIndex positions 0
+      then getColor 0
+      else if t >= VU.unsafeIndex positions (n - 1)
+        then getColor (n - 1)
+        else
+          -- Binary search for the interval containing t
+          let idx = bsearch positions t
+              p1 = VU.unsafeIndex positions idx
+              p2 = VU.unsafeIndex positions (idx + 1)
+              localT = (t - p1) / (p2 - p1)
+          in lerpColor localT (getColor idx) (getColor (idx + 1))
+{-# INLINE fromStops #-}
+
+-- | Binary search: find largest index i where positions[i] <= t and t <= positions[i+1].
+bsearch :: VU.Vector Double -> Double -> Int
+bsearch vec t = go 0 (VU.length vec - 2)
+  where
+    go lo hi
+      | lo >= hi  = lo
+      | otherwise =
+          let mid = (lo + hi + 1) `div` 2
+          in if VU.unsafeIndex vec mid <= t
+               then go mid hi
+               else go lo (mid - 1)
+{-# INLINE bsearch #-}
 
 -- | Cosine palette (Inigo Quilez). Produces infinitely smooth gradients.
 -- color(t) = a + b * cos(2*pi * (c*t + d))
@@ -32,8 +55,9 @@ cosinePalette :: (Double, Double, Double)  -- ^ a (RGB bias)
               -> (Double, Double, Double)  -- ^ d (RGB phase)
               -> Palette
 cosinePalette (ar,ag,ab) (br,bg,bb) (cr,cg,cb) (dr,dg,db) t =
-  let f v a b c d = clampChannel (a + b * cos (2 * pi * (c * v + d)))
+  let f v a' b' c' d' = clampChannel (a' + b' * cos (2 * pi * (c' * v + d')))
   in Color (f t ar br cr dr) (f t ag bg cg dg) (f t ab bb cb db) 1.0
+{-# INLINE cosinePalette #-}
 
 -- Named palettes
 

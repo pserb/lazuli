@@ -15,6 +15,7 @@ radialGradient :: (Double, Double) -> ScalarField
 radialGradient (cx, cy) = \(x, y) ->
   let dist = sqrt ((x - cx) ** 2 + (y - cy) ** 2)
   in min 1.0 (dist / 0.7071)
+{-# INLINE radialGradient #-}
 
 -- | Gradient along an angle (radians), centered at (0.5, 0.5).
 linearGradient :: Double -> ScalarField
@@ -31,6 +32,7 @@ stripes freq angle = \(x, y) ->
       dy = sin angle
       t = (x * dx + y * dy) * freq
   in (sin (t * 2 * pi) + 1) / 2
+{-# INLINE stripes #-}
 
 -- | Concentric rings from a center point.
 ripple :: (Double, Double) -> Double -> ScalarField

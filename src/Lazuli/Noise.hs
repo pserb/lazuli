@@ -68,51 +68,59 @@ voronoi seed n = \(x, y) ->
 
 -- | Fractal Brownian Motion — layer multiple octaves of simplex noise.
 -- Output normalized to [0, 1].
+-- Perm tables and amplitude weights are pre-built once, then reused for all pixels.
 fbm :: Int -> Seed -> Double -> ScalarField
-fbm octaves seed freq = \(x, y) ->
-  let layers = [ simplex (seed + i) (freq * (2 ^^ i)) (x, y) * (0.5 ^^ i)
-               | i <- [0 .. octaves - 1] ]
-      total = sum layers
-      maxVal = sum [ 0.5 ^^ i | i <- [0 .. octaves - 1] :: [Int] ]
-  in clamp01 (total / maxVal)
+fbm octaves seed freq =
+  let -- Pre-build all octave closures (each with its own perm table) OUTSIDE the pixel lambda
+      octaveFns = [ simplex (seed + i) (freq * (2 ^^ i)) | i <- [0 .. octaves - 1] ]
+      amps      = [ 0.5 ^^ i | i <- [0 .. octaves - 1] :: [Int] ]
+      maxVal    = sum amps
+  in \(x, y) ->
+    let total = sumWith (\sf amp -> sf (x, y) * amp) octaveFns amps
+    in clamp01 (total / maxVal)
 
 -- | Ridged multifractal — creates sharp ridges from simplex noise.
 -- Output normalized to [0, 1].
 ridged :: Seed -> Double -> ScalarField
-ridged seed freq = \(x, y) ->
-  let raw = simplex seed freq (x, y)
-  in 1.0 - abs (2.0 * raw - 1.0)
+ridged seed freq =
+  let sf = simplex seed freq
+  in \(x, y) ->
+    let raw = sf (x, y)
+    in 1.0 - abs (2.0 * raw - 1.0)
 
 -- | Turbulence — absolute-value fBM. Creates sharp valleys at zero crossings.
 -- Ideal for marble/agate veining when fed into sin().
 -- Output normalized to [0, 1].
 turbulence :: Int -> Seed -> Double -> ScalarField
-turbulence octaves seed freq = \(x, y) ->
-  let layers = [ abs (2.0 * simplex (seed + i) (freq * (2 ^^ i)) (x, y) - 1.0)
-                   * (0.5 ^^ i)
-               | i <- [0 .. octaves - 1] ]
-      total = sum layers
-      maxVal = sum [ 0.5 ^^ i | i <- [0 .. octaves - 1] :: [Int] ]
-  in clamp01 (total / maxVal)
+turbulence octaves seed freq =
+  let octaveFns = [ simplex (seed + i) (freq * (2 ^^ i)) | i <- [0 .. octaves - 1] ]
+      amps      = [ 0.5 ^^ i | i <- [0 .. octaves - 1] :: [Int] ]
+      maxVal    = sum amps
+  in \(x, y) ->
+    let total = sumWith (\sf amp -> abs (2.0 * sf (x, y) - 1.0) * amp) octaveFns amps
+    in clamp01 (total / maxVal)
 
 -- | Multi-octave ridged noise with feedback weighting.
 -- Ridges self-reinforce while valleys become smooth, creating branching vein networks.
 -- Parameters: octaves, gain (feedback strength), seed, frequency.
 -- Output normalized to [0, 1].
 ridgedFbm :: Int -> Double -> Seed -> Double -> ScalarField
-ridgedFbm octaves gain seed freq = \(x, y) ->
-  let go _ _ 0 sig = sig
-      go w f i sig =
-        let raw = simplex (seed + octaves - i) f (x, y)
-            n0  = 1.0 - abs (2.0 * raw - 1.0)  -- ridge fold
-            n1  = n0 * n0                         -- sharpen
-            n2  = n1 * w                           -- apply feedback weight
-            amp = 0.5 ^^ (octaves - i)
-            w'  = clamp01 (n2 * gain)
-        in go w' (f * 2.0) (i - 1) (sig + n2 * amp)
-      total = go 1.0 freq octaves 0.0
+ridgedFbm octaves gain seed freq =
+  let -- Pre-build: octave k (0-indexed) uses seed+k, freq * 2^k, amp = 0.5^k
+      octaveData = [ (simplex (seed + k) (freq * (2 ^^ k)), 0.5 ^^ k :: Double)
+                   | k <- [0 .. octaves - 1] ]
       maxVal = sum [ 0.5 ^^ i | i <- [0 .. octaves - 1] :: [Int] ]
-  in clamp01 (total / maxVal)
+  in \(x, y) ->
+    let go _ [] sig = sig
+        go !w ((sf, amp):rest) sig =
+          let raw = sf (x, y)
+              n0  = 1.0 - abs (2.0 * raw - 1.0)
+              n1  = n0 * n0
+              n2  = n1 * w
+              w'  = clamp01 (n2 * gain)
+          in go w' rest (sig + n2 * amp)
+        total = go 1.0 octaveData 0.0
+    in clamp01 (total / maxVal)
 
 -- | F2-F1 Voronoi edge detection.
 -- Returns the difference between second-nearest and nearest cell distances.
@@ -163,6 +171,7 @@ grad2 = V.fromList
 
 dot2 :: (Double, Double) -> Double -> Double -> Double
 dot2 (gx, gy) x y = gx * x + gy * y
+{-# INLINE dot2 #-}
 
 -- Build a 512-entry permutation table (256 doubled) from a seed.
 buildPermTable :: Seed -> Vector Int
@@ -189,6 +198,17 @@ hashInt a b =
   let h0 = a * 374761393 + b * 668265263
       h1 = (h0 `xor` (h0 `shiftR` 13)) * 1274126177
   in h1 `xor` (h1 `shiftR` 16)
+{-# INLINE hashInt #-}
+
+hash2D :: Seed -> Int -> Int -> (Double, Double)
+hash2D seed ix iy =
+  let h = ix * 374761393 + iy * 668265263 + seed * 1274126177
+      h1 = (h `xor` (h `shiftR` 13)) * 1274126177
+      h2 = h1 `xor` (h1 `shiftR` 16)
+  in ( fromIntegral (h2 .&. 0xFFFF) / 65535.0
+     , fromIntegral ((h2 `shiftR` 16) .&. 0xFFFF) / 65535.0
+     )
+{-# INLINE hash2D #-}
 
 -- Core 2D simplex noise, returns [-1, 1].
 simplex2D :: Vector Int -> Double -> Double -> Double
@@ -235,20 +255,12 @@ simplex2D perm xin yin =
                 in t2' * t2' * dot2 (V.unsafeIndex grad2 gi2) x2 y2
 
   in 70.0 * (n0 + n1 + n2)
+{-# INLINE simplex2D #-}
 
-------------------------------------------------------------------------
--- Internal: Hashing for worley / voronoi
-------------------------------------------------------------------------
-
-hash2D :: Seed -> Int -> Int -> (Double, Double)
-hash2D seed ix iy =
-  let h = ix * 374761393 + iy * 668265263 + seed * 1274126177
-      h1 = (h `xor` (h `shiftR` 13)) * 1274126177
-      h2 = h1 `xor` (h1 `shiftR` 16)
-  in ( fromIntegral (h2 .&. 0xFFFF) / 65535.0
-     , fromIntegral ((h2 `shiftR` 16) .&. 0xFFFF) / 65535.0
-     )
-
-------------------------------------------------------------------------
--- Utility
-------------------------------------------------------------------------
+-- | Strict zip-sum: avoids per-pixel list allocation for fbm/turbulence.
+sumWith :: (a -> b -> Double) -> [a] -> [b] -> Double
+sumWith f = go 0.0
+  where
+    go !acc (a:as) (b:bs) = go (acc + f a b) as bs
+    go !acc _      _      = acc
+{-# INLINE sumWith #-}
