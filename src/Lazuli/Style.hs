@@ -81,28 +81,26 @@ terrainStyle seed pal =
     landscape = foldl (addMountainLayer seed numLayers) skyGrad [0 .. numLayers - 1]
 
     addMountainLayer :: Seed -> Int -> ColorField -> Int -> ColorField
-    addMountainLayer s n bg i = \(x, y) ->
+    addMountainLayer s n bg i =
       let fi = fromIntegral i
           fn = fromIntegral n
           depth = fi / (fn - 1.0)  -- 0 = far, 1 = near
-          -- Height profile: 1D ridged noise along x
           freq = 3.0 + fi * 1.5
-          heightRaw = ridgedFbm 4 0.85 (s + i * 7) freq (x, 0.5)
-          -- Far layers are shorter, near layers taller
+          -- Pre-build ridgedFbm closure (with perm tables) BEFORE the per-pixel lambda
+          heightProfile = ridgedFbm 4 0.85 (s + i * 7) freq
           baseHeight = 0.35 + depth * 0.3
-          height = baseHeight * heightRaw
-          -- Mountain top in screen coords (0=top, 1=bottom)
-          mountainY = 1.0 - height
-          -- Anti-aliased silhouette edge
-          edgeSoft = 0.005
-          alpha = smoothstepVal (mountainY - edgeSoft) (mountainY + edgeSoft) y
-          -- Atmospheric perspective: far layers are lighter/hazier
           atmospheric = 0.3 + 0.7 * depth
           layerColor = lerpColor (1.0 - atmospheric) (pal 0.95) (pal (depth * 0.35))
           Color lr lg lb _ = layerColor
           mtnColor = Color (lr * atmospheric) (lg * atmospheric) (lb * atmospheric) 1.0
-          bgColor = bg (x, y)
-      in lerpColor alpha bgColor mtnColor
+      in \(x, y) ->
+        let heightRaw = heightProfile (x, 0.5)
+            height = baseHeight * heightRaw
+            mountainY = 1.0 - height
+            edgeSoft = 0.005
+            alpha = smoothstepVal (mountainY - edgeSoft) (mountainY + edgeSoft) y
+            bgColor = bg (x, y)
+        in lerpColor alpha bgColor mtnColor
 
 -- | Curl noise fluid dynamics — flowing ink-in-water patterns.
 -- Coordinates advected through a divergence-free flow field.
@@ -201,18 +199,25 @@ crystalStyle seed pal =
 
 -- | Inigo Quilez triple-pass domain warping.
 domainWarpStyle :: Style
-domainWarpStyle seed pal = \(x, y) ->
+domainWarpStyle seed pal =
   let freq = 1.5
       amp  = 4.0
-      qx = fbm 3 seed       freq (x + 0.0, y + 0.0)
-      qy = fbm 3 (seed + 1) freq (x + 5.2, y + 1.3)
-      rx = fbm 3 (seed + 2) freq (x + amp * qx + 1.7, y + amp * qy + 9.2)
-      ry = fbm 3 (seed + 3) freq (x + amp * qx + 8.3, y + amp * qy + 2.8)
-      val = fbm 3 (seed + 4) freq (x + amp * rx, y + amp * ry)
-      qLen = clamp01 (sqrt (qx * qx + qy * qy))
-      baseColor = pal val
-      tintColor = pal qLen
-  in lerpColor (clamp01 (ry * 0.66)) baseColor tintColor
+      -- Pre-build all fbm closures (with perm tables) BEFORE the per-pixel lambda
+      fbm0 = fbm 3 seed       freq
+      fbm1 = fbm 3 (seed + 1) freq
+      fbm2 = fbm 3 (seed + 2) freq
+      fbm3 = fbm 3 (seed + 3) freq
+      fbm4 = fbm 3 (seed + 4) freq
+  in \(x, y) ->
+    let qx = fbm0 (x, y)
+        qy = fbm1 (x + 5.2, y + 1.3)
+        rx = fbm2 (x + amp * qx + 1.7, y + amp * qy + 9.2)
+        ry = fbm3 (x + amp * qx + 8.3, y + amp * qy + 2.8)
+        val = fbm4 (x + amp * rx, y + amp * ry)
+        qLen = clamp01 (sqrt (qx * qx + qy * qy))
+        baseColor = pal val
+        tintColor = pal qLen
+    in lerpColor (clamp01 (ry * 0.66)) baseColor tintColor
 
 -- | Turbulence-driven marble veining with hot emission spots.
 magmaStyle :: Style

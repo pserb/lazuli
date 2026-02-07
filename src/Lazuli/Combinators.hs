@@ -48,10 +48,12 @@ smoothstep :: Double -> Double -> ScalarField -> ScalarField
 smoothstep edge0 edge1 f = \p ->
   let x = max 0 (min 1 ((f p - edge0) / (edge1 - edge0)))
   in x * x * (3 - 2 * x)
+{-# INLINE smoothstep #-}
 
 -- | Invert: 1 - f(x,y)
 invert :: ScalarField -> ScalarField
 invert f = \p -> 1 - f p
+{-# INLINE invert #-}
 
 -- | Remap [lo, hi] to [0, 1]
 remap :: Double -> Double -> ScalarField -> ScalarField
@@ -64,6 +66,7 @@ absField f = \p -> abs (f p)
 -- | Power: raise values to a power (contrast control)
 power :: Double -> ScalarField -> ScalarField
 power n f = \p -> f p ** n
+{-# INLINE power #-}
 
 -- | Blend two scalar fields using a weight field.
 -- scalarBlend w f1 f2: where w=0 returns f1, where w=1 returns f2.
@@ -124,6 +127,7 @@ toPolar f = \(x, y) ->
       angle = atan2 dy dx / (2 * pi) + 0.5
       dist = sqrt (dx * dx + dy * dy) * 2
   in f (angle, dist)
+{-# INLINE toPolar #-}
 
 --------------------------------------------------------------------------------
 -- Domain warping
@@ -135,6 +139,7 @@ warp dxF dyF strength f = \(x, y) ->
   let dx = dxF (x, y) * strength
       dy = dyF (x, y) * strength
   in f (x + dx, y + dy)
+{-# INLINE warp #-}
 
 --------------------------------------------------------------------------------
 -- Blending / Composition (ColorField operations)
@@ -143,12 +148,14 @@ warp dxF dyF strength f = \(x, y) ->
 -- | Linear interpolation: t=0 -> field a, t=1 -> field b
 blend :: Double -> ColorField -> ColorField -> ColorField
 blend t fa fb = \p -> lerpColor t (fa p) (fb p)
+{-# INLINE blend #-}
 
 -- | Use a scalar field as a mask: 0 -> field a, 1 -> field b
 mask :: ScalarField -> ColorField -> ColorField -> ColorField
 mask m fa fb = \p ->
   let t = max 0 (min 1 (m p))
   in lerpColor t (fa p) (fb p)
+{-# INLINE mask #-}
 
 -- | Additive blending
 add :: ColorField -> ColorField -> ColorField
@@ -173,6 +180,7 @@ screen fa fb = \p ->
            (1 - (1 - g1) * (1 - g2))
            (1 - (1 - b1) * (1 - b2))
            (1 - (1 - a1) * (1 - a2))
+{-# INLINE screen #-}
 
 -- | Alpha compositing: layer foreground over background
 over :: ColorField -> ColorField -> ColorField
@@ -184,6 +192,7 @@ over fg bg = \p ->
       outG = if outA == 0 then 0 else (fg' * fa' + bg' * ba' * (1 - fa')) / outA
       outB = if outA == 0 then 0 else (fb' * fa' + bb' * ba' * (1 - fa')) / outA
   in Color outR outG outB outA
+{-# INLINE over #-}
 
 --------------------------------------------------------------------------------
 -- Post-processing
@@ -204,3 +213,4 @@ vignette strength cf = \(x, y) ->
       darkening = 1.0 - strength * falloff
       Color cr cg cb ca = cf (x, y)
   in Color (cr * darkening) (cg * darkening) (cb * darkening) ca
+{-# INLINE vignette #-}

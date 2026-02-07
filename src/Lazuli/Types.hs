@@ -27,6 +27,7 @@ data Color = Color { r :: !Double, g :: !Double, b :: !Double, a :: !Double }
 
 clampChannel :: Double -> Double
 clampChannel = max 0 . min 1
+{-# INLINE clampChannel #-}
 
 lerpColor :: Double -> Color -> Color -> Color
 lerpColor t (Color r1 g1 b1 a1) (Color r2 g2 b2 a2) =
@@ -34,6 +35,7 @@ lerpColor t (Color r1 g1 b1 a1) (Color r2 g2 b2 a2) =
         (g1 + t * (g2 - g1))
         (b1 + t * (b2 - b1))
         (a1 + t * (a2 - a1))
+{-# INLINE lerpColor #-}
 
 black :: Color
 black = Color 0 0 0 1
@@ -46,13 +48,17 @@ constColor c = const c
 
 applyPalette :: Palette -> ScalarField -> ColorField
 applyPalette pal sf = \pt -> pal (sf pt)
+{-# INLINE applyPalette #-}
 
 clamp01 :: Double -> Double
 clamp01 = max 0 . min 1
+{-# INLINE clamp01 #-}
 
 addColors :: Color -> Color -> Color
 addColors (Color r1 g1 b1 a1) (Color r2 g2 b2 a2) =
   Color (r1 + r2) (g1 + g2) (b1 + b2) (a1 + a2)
+{-# INLINE addColors #-}
 
 scaleColor :: Double -> Color -> Color
 scaleColor s (Color cr cg cb ca) = Color (cr * s) (cg * s) (cb * s) (ca * s)
+{-# INLINE scaleColor #-}
