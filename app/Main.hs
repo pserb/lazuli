@@ -12,6 +12,7 @@ import System.Directory (makeAbsolute)
 import Data.Maybe (fromMaybe)
 import Control.Monad (when)
 import Text.Read (readMaybe)
+import GHC.Conc (getNumProcessors)
 
 ------------------------------------------------------------------------
 -- CLI Options
@@ -109,15 +110,13 @@ main = do
   -- Handle --gallery
   case optGallery opts of
     Just n -> do
-      let outPath = fromMaybe "gallery.html" (optOutput opts)
-      generateGallery n allStyles allPalettes 480 270 outPath
+      numCores <- getNumProcessors
+      let jobs = fromMaybe numCores (optJobs opts)
+          outPath = fromMaybe "gallery.html" (optOutput opts)
+      putStrLn $ "Rendering " ++ show n ++ " thumbnails with " ++ show jobs ++ " threads..."
+      generateGallery n allStyles allPalettes 480 270 jobs outPath
       putStrLn $ "Gallery written to " ++ outPath
       exitSuccess
-    Nothing -> pure ()
-
-  -- Handle --jobs (informational only for now)
-  case optJobs opts of
-    Just j  -> putStrLn $ "Using " ++ show j ++ " threads (parallelism not yet implemented)"
     Nothing -> pure ()
 
   -- Resolve seed, style, palette (--random overrides explicit values)
