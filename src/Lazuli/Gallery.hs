@@ -12,6 +12,10 @@ import qualified Text.Blaze.Html5 as H
 import qualified Text.Blaze.Html5.Attributes as A
 import Text.Blaze.Html.Renderer.Utf8 (renderHtml)
 import qualified Data.ByteString.Lazy as BL
+import Control.Concurrent (forkIO, newEmptyMVar, putMVar, takeMVar)
+import Control.Concurrent.QSem (newQSem, waitQSem, signalQSem)
+import Control.Exception (bracket_, SomeException, try)
+import System.Directory (createDirectoryIfMissing)
 
 -- | Generate an HTML gallery page with thumbnail wallpapers.
 -- Writes thumbnail PNGs alongside the HTML file.
@@ -19,19 +23,33 @@ generateGallery :: Int                       -- ^ number of wallpapers
                 -> [(String, String, Style)] -- ^ allStyles: (name, desc, styleFn)
                 -> [(String, Palette)]       -- ^ allPalettes: (name, palette)
                 -> Int -> Int                -- ^ thumbnail width, height
+                -> Int                       -- ^ number of parallel threads
                 -> FilePath                  -- ^ output HTML path
                 -> IO ()
-generateGallery n styles palettes tw th outputPath = do
+generateGallery n styles palettes tw th jobs outputPath = do
   let dir = dirOf outputPath
       entries = take n $ randomEntries (mkStdGen 12345) styles palettes
+      indexed = zip [(0 :: Int)..] entries
 
-  -- Render thumbnails
-  sequence_
-    [ let field = styleFn seed pal
-          thumbPath = dir ++ "/" ++ thumbName i
-      in renderToFile thumbPath tw th field
-    | (i, (_, _, seed, styleFn, pal)) <- zip [(0 :: Int)..] entries
-    ]
+  createDirectoryIfMissing True dir
+
+  -- Render thumbnails in parallel, bounded by job count
+  sem <- newQSem jobs
+  dones <- mapM (\(i, (_, _, seed, styleFn, pal)) -> do
+    done <- newEmptyMVar
+    _ <- forkIO $ do
+      result <- try $ bracket_ (waitQSem sem) (signalQSem sem) $ do
+        let field = styleFn seed pal
+            thumbPath = dir ++ "/" ++ thumbName i
+        renderToFile thumbPath tw th field
+        putStrLn $ "  [" ++ show (i + 1) ++ "/" ++ show n ++ "] " ++ thumbPath
+      case result of
+        Left e  -> putStrLn $ "  Error rendering thumb-" ++ show i ++ ": " ++ show (e :: SomeException)
+        Right _ -> pure ()
+      putMVar done ()
+    return done
+    ) indexed
+  mapM_ takeMVar dones
 
   -- Write HTML
   let htmlEntries =
