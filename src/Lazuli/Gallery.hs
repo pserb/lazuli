@@ -39,7 +39,7 @@ generateGallery n styles palettes tw th jobs outputPath = do
     done <- newEmptyMVar
     _ <- forkIO $ do
       result <- try $ bracket_ (waitQSem sem) (signalQSem sem) $ do
-        let field = styleFn seed pal
+        let field = styleFn seed pal 1.0
             thumbPath = dir ++ "/" ++ thumbName i
         renderToFile thumbPath tw th field
         putStrLn $ "  [" ++ show (i + 1) ++ "/" ++ show n ++ "] " ++ thumbPath
