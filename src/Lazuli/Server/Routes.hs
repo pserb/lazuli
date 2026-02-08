@@ -62,7 +62,8 @@ effectParamsFor name = case name of
     , EffectParam "radius" "float" (Just 1.0) (Just 20.0) (Just "5")
     ]
   "vignette" ->
-    [ EffectParam "strength" "float" (Just 0.0) (Just 1.0) (Just "0.35")
+    [ EffectParam "radius" "float" (Just 0.0) (Just 1.0) (Just "0.7")
+    , EffectParam "softness" "float" (Just 0.0) (Just 1.0) (Just "0.3")
     ]
   "contrast" ->
     [ EffectParam "amount" "float" (Just 0.0) (Just 2.0) (Just "1.0")
@@ -77,9 +78,71 @@ effectParamsFor name = case name of
     [ EffectParam "size" "int" (Just 2) (Just 50) (Just "8")
     ]
   "halftone" ->
-    [ EffectParam "size" "int" (Just 2) (Just 20) (Just "6")
+    [ EffectParam "dotSize" "float" (Just 2.0) (Just 10.0) (Just "5.0")
+    , EffectParam "freq" "float" (Just 5.0) (Just 30.0) (Just "15.0")
     ]
   "noise" ->
     [ EffectParam "amount" "float" (Just 0.0) (Just 1.0) (Just "0.1")
+    , EffectParam "size" "float" (Just 1.0) (Just 10.0) (Just "4.0")
     ]
-  _ -> []  -- Effects without parameters
+  "distort" ->
+    [ EffectParam "amount" "float" (Just 0.0) (Just 1.0) (Just "0.3")
+    , EffectParam "center" "float" (Just 1.0) (Just 20.0) (Just "10.0")
+    ]
+  "flutedGlass" ->
+    [ EffectParam "amount" "float" (Just 0.0) (Just 1.0) (Just "0.3")
+    , EffectParam "width" "float" (Just 5.0) (Just 30.0) (Just "15.0")
+    ]
+  "water" ->
+    [ EffectParam "amp" "float" (Just 0.0) (Just 0.1) (Just "0.05")
+    , EffectParam "freq" "float" (Just 0.1) (Just 1.0) (Just "0.5")
+    ]
+  "paperTexture" ->
+    [ EffectParam "intensity" "float" (Just 0.0) (Just 1.0) (Just "0.3")
+    , EffectParam "scale" "float" (Just 1.0) (Just 10.0) (Just "5.0")
+    ]
+  "crackle" ->
+    [ EffectParam "amount" "float" (Just 0.0) (Just 1.0) (Just "0.3")
+    ]
+  "marble" ->
+    [ EffectParam "intensity" "float" (Just 0.0) (Just 1.0) (Just "0.5")
+    , EffectParam "scale" "float" (Just 0.01) (Just 0.5) (Just "0.1")
+    ]
+  "wood" ->
+    [ EffectParam "intensity" "float" (Just 0.0) (Just 1.0) (Just "0.3")
+    , EffectParam "width" "float" (Just 5.0) (Just 30.0) (Just "15.0")
+    ]
+  "plastic" ->
+    [ EffectParam "specular" "float" (Just 0.0) (Just 1.0) (Just "0.5")
+    , EffectParam "tintR" "float" (Just 0.0) (Just 255.0) (Just "200.0")
+    , EffectParam "tintG" "float" (Just 0.0) (Just 255.0) (Just "200.0")
+    , EffectParam "tintB" "float" (Just 0.0) (Just 255.0) (Just "200.0")
+    ]
+  "metal" ->
+    [ EffectParam "intensity" "float" (Just 0.0) (Just 1.0) (Just "0.3")
+    , EffectParam "direction" "string" Nothing Nothing (Just "horizontal")
+    ]
+  "glass" ->
+    [ EffectParam "refraction" "float" (Just 0.1) (Just 2.0) (Just "0.5")
+    ]
+  "oilPaint" ->
+    [ EffectParam "radius" "int" (Just 1) (Just 10) (Just "3")
+    , EffectParam "levels" "int" (Just 2) (Just 20) (Just "8")
+    ]
+  "charcoal" ->
+    [ EffectParam "intensity" "float" (Just 0.0) (Just 2.0) (Just "1.0")
+    ]
+  "neon" ->
+    [ EffectParam "threshold" "float" (Just 0.0) (Just 1.0) (Just "0.5")
+    , EffectParam "r" "float" (Just 0.0) (Just 255.0) (Just "255.0")
+    , EffectParam "g" "float" (Just 0.0) (Just 255.0) (Just "100.0")
+    , EffectParam "b" "float" (Just 0.0) (Just 255.0) (Just "200.0")
+    ]
+  "ink" ->
+    [ EffectParam "intensity" "float" (Just 0.0) (Just 1.0) (Just "0.7")
+    ]
+  -- Effects without parameters
+  "sepia" -> []
+  "grayscale" -> []
+  "dither" -> []
+  _ -> []

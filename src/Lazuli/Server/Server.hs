@@ -147,7 +147,7 @@ buildCliCommand req =
   "--freq " ++ show (freq req) ++ " " ++
   (if invert req then "--invert " else "") ++
   concatMap (\e -> "--effect " ++ show e ++ " ") (effects req) ++
-  "-o wallpaper.png"
+  "--set-wallpaper"
 
 -- | Helper to encode response as JSON
 encodeResponse :: PreviewResponse -> T.Text

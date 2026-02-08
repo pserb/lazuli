@@ -59,6 +59,7 @@ async function loadMetadata() {
             fetch('/api/effects').then(r => r.json())
         ]);
         
+        console.log('Loaded effects:', effects);
         populateStyleSelect(styles);
         populatePaletteSelect(palettes);
         effectDefinitions = effects;
