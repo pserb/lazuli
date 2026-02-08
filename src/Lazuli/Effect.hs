@@ -47,6 +47,7 @@ effectDescriptions =
   , ("dither:amount", "Ordered dithering")
   , ("halftone:size:freq", "Newprint halftone dots")
   , ("noise:amount:size", "Add random noise")
+  , ("filmGrain:amount:size:colorAmount", "Physically-based film grain (luminance-dependent)")
   , ("distort:amount:center", "Radial distortion")
   , ("flutedGlass:amount:width", "Vertical fluted glass effect")
   , ("water:amp:freq", "Water wave distortion")
@@ -91,6 +92,7 @@ effectPool =
   , ("dither", gen1 0.05 0.2 dither)
   , ("halftone", gen2 (2.0, 5.0) (5.0, 20.0) halftone)
   , ("noise", gen2 (0.01, 0.1) (1, 4) noise)
+  , ("filmGrain", gen3 (0.3, 0.8) (1.0, 3.0) (0.0, 0.5) filmGrain)
   , ("distort", gen2 (0.1, 0.5) (1, 10) distort)
   , ("flutedGlass", gen2 (0.1, 0.5) (5, 20) flutedGlass)
   , ("water", gen2 (0.01, 0.05) (0.1, 0.5) water)
@@ -169,6 +171,7 @@ parseEffect str = case break (== ':') str of
     "pixelate"     -> parse1 pixelate rest
     "dither"       -> parse1 dither rest
     "noise"        -> parse2 noise rest
+    "filmGrain"    -> parse3 filmGrain rest
     "distort"      -> parse2 distort rest
     "flutedGlass"  -> parse2 flutedGlass rest
     "halftone"     -> parse2 halftone rest
@@ -445,6 +448,39 @@ noise amount size img =
        in PixelRGBA8 (round $ f r) (round $ f g) (round $ f b) a
      ) w h
 
+-- | Film Grain (physically-based, luminance-dependent)
+filmGrain :: Double -> Double -> Double -> Effect
+filmGrain amount size colorAmount img =
+  let (Image w h _) = img
+      freq = 1.0 / size
+      sfBase    = simplex 12345 freq
+      sfColorR  = simplex 12346 freq
+      sfColorG  = simplex 12347 freq
+      sfColorB  = simplex 12348 freq
+      sfCluster = simplex 12445 0.003  -- low-freq cluster modulation
+  in generateImage (\x y ->
+       let PixelRGBA8 r g b a = pixelAt img x y
+           -- Pixel luminance
+           !lum = 0.2126 * fromIntegral r + 0.7152 * fromIntegral g + 0.0722 * fromIntegral b
+           -- Luminance-dependent grain strength: shadows grainier than highlights
+           !grainStrength = amount * 25.0 * (1.0 - 0.7 * ((lum / 255.0) ** 0.8))
+           -- Grain clustering: spatial variation in grain density
+           !cluster = 0.5 + simplex2dAt sfCluster x y * 0.5
+           !strength = grainStrength * cluster
+           -- Base grain [-1, 1]
+           !baseG = simplex2dAt sfBase x y * 2.0 - 1.0
+           -- Per-channel color grain
+           !grainR = baseG + colorAmount * (simplex2dAt sfColorR x y * 2.0 - 1.0) * 0.3
+           !grainGr = baseG + colorAmount * (simplex2dAt sfColorG x y * 2.0 - 1.0) * 0.3
+           !grainBl = baseG + colorAmount * (simplex2dAt sfColorB x y * 2.0 - 1.0) * 0.3
+       in PixelRGBA8 (round $ clamp $ fromIntegral r + grainR * strength)
+                     (round $ clamp $ fromIntegral g + grainGr * strength)
+                     (round $ clamp $ fromIntegral b + grainBl * strength)
+                     a
+     ) w h
+  where
+    simplex2dAt sf px py = sf (fromIntegral px, fromIntegral py)
+
 -- | Distort
 distort :: Double -> Double -> Effect
 distort amount center img =
@@ -505,16 +541,33 @@ water amplitude frequency img =
        in sampleBilinear img (fromIntegral x + dx) (fromIntegral y + dy)
      ) w h
 
--- | Paper Texture (Simplex)
+-- | Paper Texture (multi-octave FBM, luminance-aware)
 paperTexture :: Double -> Double -> Effect
 paperTexture intensity scale img =
   let (Image w h _) = img
-      sf = simplex 54321 (1.0 / scale)
+      -- 3-octave FBM for fine fiber detail
+      sf1 = simplex 54321 (1.0 / scale)
+      sf2 = simplex 54322 (2.0 / scale)
+      sf3 = simplex 54323 (4.0 / scale)
+      -- Low-frequency surface undulation
+      sfLarge = simplex 54400 (0.1 / scale)
   in generateImage (\x y ->
        let PixelRGBA8 r g b a = pixelAt img x y
-           n = sf (fromIntegral x, fromIntegral y) -- 0..1
-           -- Lighten/darken based on noise
-           factor = 1.0 - intensity * 0.2 + (n - 0.5) * intensity
+           pos = (fromIntegral x, fromIntegral y)
+           -- FBM: 3 octaves with decreasing amplitude
+           !n1 = sf1 pos
+           !n2 = sf2 pos
+           !n3 = sf3 pos
+           !baseTex = n1 * 0.5 + n2 * 0.3 + n3 * 0.2  -- [0,1]
+           !largescale = sfLarge pos  -- [0,1]
+           -- Combine fine fiber + large scale undulation
+           !combined = baseTex * 0.6 + largescale * 0.4  -- [0,1]
+           -- Paper grain more visible in midtones
+           !lum = (0.2126 * fromIntegral r + 0.7152 * fromIntegral g + 0.0722 * fromIntegral b) / 255.0
+           !midtoneBias = 1.0 - 2.0 * abs (lum - 0.5)  -- peaks at lum=0.5
+           !effectiveInt = intensity * (0.4 + 0.6 * midtoneBias)
+           -- Multiplicative application (paper absorbs light)
+           !factor = 1.0 + (combined - 0.5) * effectiveInt
            f v = clamp $ fromIntegral v * factor
        in PixelRGBA8 (round $ f r) (round $ f g) (round $ f b) a
      ) w h
