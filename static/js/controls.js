@@ -64,11 +64,14 @@ async function loadMetadata() {
         populatePaletteSelect(palettes);
         effectDefinitions = effects;
         
-        // Set initial values
-        if (styles.length > 0) state.style = styles[0].name;
-        if (palettes.length > 0) state.palette = palettes[0].name;
+        // Set initial values from API response (using styleName/paletteName)
+        if (styles.length > 0) state.style = styles[0].styleName;
+        if (palettes.length > 0) state.palette = palettes[0].paletteName;
         
         updateUIFromState();
+        
+        // Request initial preview with defaults
+        requestPreview();
     } catch (error) {
         console.error('Failed to load metadata:', error);
         showToast('Failed to load settings', 'error');
