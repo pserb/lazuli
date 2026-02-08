@@ -25,6 +25,12 @@ module Lazuli.Combinators
   , multiply
   , screen
   , over
+  , overlay
+  , softLight
+  , colorDodge
+  , colorBurn
+  , withOpacity
+  , colorLuminance
     -- Post-processing
   , vignette
   ) where
@@ -193,6 +199,68 @@ over fg bg = \p ->
       outB = if outA == 0 then 0 else (fb' * fa' + bb' * ba' * (1 - fa')) / outA
   in Color outR outG outB outA
 {-# INLINE over #-}
+
+-- | Overlay: multiply dark areas, screen light areas (contrast + texture)
+overlay :: ColorField -> ColorField -> ColorField
+overlay fa fb = \p ->
+  let Color r1 g1 b1 a1 = fa p  -- base
+      Color r2 g2 b2 _  = fb p  -- blend
+      ov base bl = if base < 0.5
+                   then 2.0 * base * bl
+                   else 1.0 - 2.0 * (1.0 - base) * (1.0 - bl)
+  in Color (ov r1 r2) (ov g1 g2) (ov b1 b2) a1
+{-# INLINE overlay #-}
+
+-- | Soft Light: subtle luminosity-preserving texture application (W3C/Photoshop formula)
+softLight :: ColorField -> ColorField -> ColorField
+softLight fa fb = \p ->
+  let Color r1 g1 b1 a1 = fa p  -- base
+      Color r2 g2 b2 _  = fb p  -- blend
+      sl base bl
+        | bl <= 0.5 = base - (1.0 - 2.0 * bl) * base * (1.0 - base)
+        | otherwise  = base + (2.0 * bl - 1.0) * (d base - base)
+      d x = if x <= 0.25
+            then ((16.0 * x - 12.0) * x + 4.0) * x
+            else sqrt x
+  in Color (sl r1 r2) (sl g1 g2) (sl b1 b2) a1
+{-# INLINE softLight #-}
+
+-- | Color Dodge: brighten base by blend amount (light leaks, glow)
+colorDodge :: ColorField -> ColorField -> ColorField
+colorDodge fa fb = \p ->
+  let Color r1 g1 b1 a1 = fa p
+      Color r2 g2 b2 _  = fb p
+      dodge base bl
+        | bl >= 1.0 = 1.0
+        | otherwise = min 1.0 (base / (1.0 - bl))
+  in Color (dodge r1 r2) (dodge g1 g2) (dodge b1 b2) a1
+{-# INLINE colorDodge #-}
+
+-- | Color Burn: deepen shadows by blend amount (rich shadows, vignettes)
+colorBurn :: ColorField -> ColorField -> ColorField
+colorBurn fa fb = \p ->
+  let Color r1 g1 b1 a1 = fa p
+      Color r2 g2 b2 _  = fb p
+      burn base bl
+        | bl <= 0.0 = 0.0
+        | otherwise = max 0.0 (1.0 - (1.0 - base) / bl)
+  in Color (burn r1 r2) (burn g1 g2) (burn b1 b2) a1
+{-# INLINE colorBurn #-}
+
+-- | Apply a blend mode at a given opacity.
+-- withOpacity 0.3 overlay base texture
+-- At opacity 0, returns base unchanged. At 1, returns full blend.
+withOpacity :: Double -> (ColorField -> ColorField -> ColorField) -> ColorField -> ColorField -> ColorField
+withOpacity opacity blendMode base layer = \p ->
+  let baseColor = base p
+      blendedColor = (blendMode base layer) p
+  in lerpColor (max 0 (min 1 opacity)) baseColor blendedColor
+{-# INLINE withOpacity #-}
+
+-- | Compute perceptual luminance of a color (BT.709 coefficients)
+colorLuminance :: Color -> Double
+colorLuminance (Color cr cg cb _) = 0.2126 * cr + 0.7152 * cg + 0.0722 * cb
+{-# INLINE colorLuminance #-}
 
 --------------------------------------------------------------------------------
 -- Post-processing
