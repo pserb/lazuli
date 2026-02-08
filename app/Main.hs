@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 module Main where
 
 import Lazuli.Render (renderToFileAA)
@@ -5,6 +6,9 @@ import Lazuli.Gallery (generateGallery)
 import Lazuli.Palette (paletteByName, allPalettes, paletteNames)
 import Lazuli.Style (styleByName, allStyles)
 import Lazuli.Effect (parseEffect, effectDescriptions)
+#ifdef GPU_ENABLED
+import Lazuli.GPU (gpuRenderToFile, gpuAvailable)
+#endif
 import Options.Applicative
 import System.Random (randomRIO)
 import System.Exit (exitSuccess, exitFailure, ExitCode(..))
@@ -39,6 +43,7 @@ data Options = Options
   , optEffects      :: [String]
   , optFreq         :: Double
   , optInvert       :: Bool
+  , optGPU          :: Bool
   }
 
 optParser :: Parser Options
@@ -62,6 +67,7 @@ optParser = Options
   <*> many (strOption (long "effect" <> metavar "EFFECT" <> help "Apply effect (e.g. blur:3)"))
   <*> option auto (long "freq" <> short 'f' <> value 1.0 <> metavar "DOUBLE" <> help "Frequency multiplier (default 1.0, lower=smoother, higher=denser)")
   <*> switch (long "invert" <> short 'i' <> help "Flip palette: swap dominant and highlight colors")
+  <*> switch (long "gpu" <> help "Use GPU-accelerated rendering (requires -f gpu build flag)")
 
 parseRes :: ReadM (Int, Int)
 parseRes = eitherReader $ \s -> case break (== 'x') s of
@@ -195,8 +201,24 @@ main = do
   unless (null (optEffects opts)) $
     putStrLn $ "Effects: " ++ unwords (optEffects opts)
 
-  let field = styleFn seed palette freq
-  renderToFileAA effects outFile samples w h field
+  -- Choose rendering backend
+  useGPU <- shouldUseGPU (optGPU opts)
+
+  if useGPU
+    then do
+#ifdef GPU_ENABLED
+      putStrLn "Rendering with GPU acceleration..."
+      gpuRenderToFile effects outFile styleName seed w h palette samples freq
+#else
+      putStrLn "Warning: --gpu requested but lazuli was not built with GPU support."
+      putStrLn "Rebuild with: cabal build -f gpu"
+      putStrLn "Falling back to CPU rendering..."
+      let field = styleFn seed palette freq
+      renderToFileAA effects outFile samples w h field
+#endif
+    else do
+      let field = styleFn seed palette freq
+      renderToFileAA effects outFile samples w h field
 
   putStrLn $ "Written to " ++ outFile
 
@@ -208,3 +230,21 @@ main = do
     case exitCode of
       ExitSuccess   -> putStrLn $ "Wallpaper set to " ++ absPath
       ExitFailure _ -> putStrLn $ "Failed to set wallpaper: " ++ err
+
+------------------------------------------------------------------------
+-- GPU support helpers
+------------------------------------------------------------------------
+
+-- | Determine whether to use GPU rendering.
+-- Returns True only when --gpu was requested AND GPU support is available.
+shouldUseGPU :: Bool -> IO Bool
+shouldUseGPU False = return False
+shouldUseGPU True = do
+#ifdef GPU_ENABLED
+  avail <- gpuAvailable
+  unless avail $
+    putStrLn "Warning: --gpu requested but GPU is not available. Falling back to CPU."
+  return avail
+#else
+  return True  -- Will hit the #ifndef branch above and print a warning
+#endif
