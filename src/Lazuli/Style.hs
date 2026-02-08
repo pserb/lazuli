@@ -123,64 +123,67 @@ inkStyle seed pal freqMul =
 
     colored = applyPalette pal (smoothstep 0.1 0.9 combined)
 
--- | Fluted glass: smooth gradient viewed through cylindrical lens array.
--- Physically-based refraction with chromatic dispersion, Schlick's Fresnel,
--- Gaussian caustics, and surface imperfections.
+-- | Fluted glass: architectural glass panels with smooth gradient behind them.
+-- Perfectly straight, evenly-spaced vertical panels with 3D convex shading,
+-- dark gaps, and subtle chromatic refraction.
 flutedStyle :: Style
 flutedStyle seed pal freqMul =
-  vignette 0.2 finalImage
+  vignette 0.15 finalImage
   where
     f = freqMul
 
-    -- Background: smooth warped gradient (unchanged)
-    bgNoise = fbm 4 seed (2.0 * f)
-    bgWarped = warp (simplex (seed+1) (1.5 * f)) (simplex (seed+2) (1.5 * f)) 0.2 bgNoise
-    background = applyPalette pal (power 0.8 bgWarped)
+    -- SMOOTH background: low-frequency simplex, NOT fbm with warping.
+    -- A gentle color wash that the glass panels structure.
+    bgSmooth = simplex seed (0.8 * f)
+    bgVariation = simplex (seed + 1) (0.5 * f)
+    background = \(x, y) ->
+      let base = bgSmooth (x, y)
+          vary = bgVariation (x, y) * 0.2
+          t = clamp01 (base * 0.7 + vary + 0.15)
+      in pal t
 
-    -- Fluted glass parameters
-    numRibs = 14.0 * f
-    baseStrength = 0.05  -- base refraction displacement
-
-    -- Surface imperfection: subtle noise on ridge positions
-    surfaceNoise = simplex (seed+10) (30.0 * f)
+    -- Panel parameters
+    numPanels = 20.0 * f
+    gapWidth = 0.008 / f  -- thin dark gap between panels
 
     finalImage (x, y) =
-      let -- Ridge phase with surface imperfection
-          imperfection = surfaceNoise (x, y) * 0.02
-          phase = (x + imperfection) * numRibs * 2.0 * pi
+      let -- Which panel are we in? Simple division, NO noise on position
+          panelFloat = x * numPanels
+          panelIndex = floor panelFloat :: Int
+          -- Position within panel: 0.0 = left edge, 1.0 = right edge
+          posInPanel = panelFloat - fromIntegral panelIndex
 
-          -- Ridge shape: how far from center of current ridge
-          ridgePos = abs (sin (phase / 2.0))
+          -- Gap detection: are we in the dark gap between panels?
+          halfGap = gapWidth * numPanels * 0.5
+          isGap = posInPanel < halfGap
+                  || posInPanel > (1.0 - halfGap)
 
-          -- Refraction displacement (lens curvature)
-          lensDisplacement = cos phase * baseStrength
+          -- 3D panel shading: convex shape, bright center, dark edges
+          centered = posInPanel * 2.0 - 1.0
+          panelShading = 1.0 - 0.3 * centered * centered
 
-          -- Chromatic dispersion: different IOR per channel
-          dxR = lensDisplacement * 0.85   -- IOR_red ~ 1.45
-          dxG = lensDisplacement * 1.00   -- IOR_green ~ 1.47
-          dxB = lensDisplacement * 1.20   -- IOR_blue ~ 1.49
+          -- Subtle refraction: smooth sinusoidal displacement per panel position
+          refractionStrength = 0.015
+          dx = sin (posInPanel * pi) * refractionStrength
+          -- Chromatic dispersion: tiny per-channel offset
+          dxR = dx * 0.8
+          dxG = dx * 1.0
+          dxB = dx * 1.25
 
-          -- Sample background at three different positions (one per channel)
+          -- Sample the smooth background at slightly different x positions per channel
           Color rR _ _ _ = background (x + dxR, y)
           Color _ gG _ _ = background (x + dxG, y)
           Color _ _ bB _ = background (x + dxB, y)
 
-          -- Fresnel effect (Schlick's approximation, F0 for glass ~ 0.04)
-          f0 = 0.04
-          cosTheta = abs (cos phase)
-          fresnel = f0 + (1.0 - f0) * (1.0 - cosTheta) ** 5.0
-          transmission = 1.0 - fresnel * 0.5
+          -- Apply panel shading
+          shadedR = rR * panelShading
+          shadedG = gG * panelShading
+          shadedB = bB * panelShading
 
-          -- Caustic: Gaussian-shaped light convergence at ridge centers
-          causticRaw = exp (-ridgePos * ridgePos * 8.0)
-          caustic = causticRaw * 0.12
-
-          -- Combine
-          finalR = min 1.0 (rR * transmission + caustic)
-          finalG = min 1.0 (gG * transmission + caustic)
-          finalB = min 1.0 (bB * transmission + caustic)
-
-      in Color finalR finalG finalB 1.0
+      in if isGap
+         then let Color cr cg cb _ = background (x, y)
+              in Color (cr * 0.15) (cg * 0.15) (cb * 0.15) 1.0
+         else Color (min 1.0 shadedR) (min 1.0 shadedG) (min 1.0 shadedB) 1.0
 
 -- | Turbulence-driven marble veining with hot emission spots.
 magmaStyle :: Style
