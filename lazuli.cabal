@@ -52,7 +52,12 @@ extra-doc-files:    CHANGELOG.md
 -- extra-source-files:
 
 flag gpu
-    description: Enable GPU-accelerated rendering via OpenGL
+    description: Enable accelerated rendering via LLVM (works on all platforms)
+    default:     False
+    manual:      True
+
+flag cuda
+    description: Use NVIDIA CUDA GPU backend (requires CUDA toolkit)
     default:     False
     manual:      True
 
@@ -91,9 +96,13 @@ library
                         , Lazuli.GPU.Noise
                         , Lazuli.GPU.Combinators
                         , Lazuli.GPU.Style
-        build-depends:    accelerate           >= 1.3
-                        , accelerate-llvm-ptx  >= 1.3
+        build-depends:    accelerate              >= 1.3
+                        , accelerate-llvm-native  >= 1.3
         cpp-options:      -DGPU_ENABLED
+
+    if flag(gpu) && flag(cuda)
+        build-depends:    accelerate-llvm-ptx     >= 1.3
+        cpp-options:      -DCUDA_ENABLED
 
 executable lazuli
     import:           warnings
@@ -111,3 +120,5 @@ executable lazuli
 
     if flag(gpu)
         cpp-options:  -DGPU_ENABLED
+    if flag(gpu) && flag(cuda)
+        cpp-options:  -DCUDA_ENABLED

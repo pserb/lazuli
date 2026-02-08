@@ -1,15 +1,21 @@
+{-# LANGUAGE CPP              #-}
 {-# LANGUAGE RebindableSyntax #-}
 {-# LANGUAGE TypeOperators    #-}
--- | GPU-accelerated rendering using the @accelerate@ library.
+-- | Accelerated rendering using the @accelerate@ library.
 --
--- The public API mirrors Lazuli.Render but executes the entire
--- field-evaluation pipeline on the GPU.  Post-processing effects
--- are still applied on the CPU after pixel readback.
+-- Build with @cabal build -f gpu@ to enable.
 --
--- Build with @cabal build -f gpu@ to enable.  The @accelerate-llvm-ptx@
--- backend targets NVIDIA GPUs via CUDA; @accelerate-llvm-native@ provides
--- a multi-core CPU fallback that still benefits from accelerate's
--- optimising compiler.
+-- Backends:
+--
+--   * @accelerate-llvm-native@ (default): LLVM-optimised vectorised
+--     multi-core CPU code.  Works on all platforms — x86 (SSE\/AVX),
+--     Apple Silicon (NEON), ARM, etc.
+--
+--   * @accelerate-llvm-ptx@ (opt-in via @-f cuda@): NVIDIA GPU via CUDA.
+--     Requires the CUDA toolkit to be installed.
+--
+-- The accelerate code is identical for both backends; only the @run@
+-- function differs.
 module Lazuli.GPU
   ( gpuRender
   , gpuRenderToFile
@@ -18,10 +24,12 @@ module Lazuli.GPU
 
 import Prelude as P
 
-import Data.Array.Accelerate                as A
-import Data.Array.Accelerate.LLVM.PTX       as PTX  -- NVIDIA GPU backend
--- For systems without CUDA, swap the import above for:
--- import Data.Array.Accelerate.LLVM.Native as Native
+import Data.Array.Accelerate                  as A
+import Data.Array.Accelerate.LLVM.Native      as Native
+
+#ifdef CUDA_ENABLED
+import Data.Array.Accelerate.LLVM.PTX         as PTX
+#endif
 
 import Lazuli.Types (Color(..), Palette)
 import Lazuli.Effect (Effect, applyEffects)
@@ -35,20 +43,33 @@ import Data.Word (Word8)
 import Control.Exception (try, SomeException)
 
 ------------------------------------------------------------------------
--- GPU availability check
+-- Backend selection
 ------------------------------------------------------------------------
 
--- | Check whether the GPU backend is functional.
--- Attempts a trivial accelerate computation; returns False on failure.
+-- | Run an accelerate computation using the best available backend.
+-- With @-f cuda@: tries NVIDIA GPU first, falls back to LLVM native.
+-- Without @-f cuda@: uses LLVM native (vectorised multi-core CPU).
+runAccelerate :: Arrays a => Acc a -> a
+#ifdef CUDA_ENABLED
+runAccelerate = PTX.run
+#else
+runAccelerate = Native.run
+#endif
+
+------------------------------------------------------------------------
+-- Availability check
+------------------------------------------------------------------------
+
+-- | Check whether the accelerate backend is functional.
 gpuAvailable :: IO Bool
 gpuAvailable = do
   result <- try $ do
     let arr  = A.use (A.fromList (Z :. (1 :: Int)) [42 :: Int])
         prog = A.map (+ 1) arr
-    let !_ = PTX.run prog
+    let !_ = runAccelerate prog
     return True
   case result of
-    Right b                -> return b
+    Right b                   -> return b
     Left (_ :: SomeException) -> return False
 
 ------------------------------------------------------------------------
@@ -56,7 +77,7 @@ gpuAvailable = do
 ------------------------------------------------------------------------
 
 -- | Sample the Haskell palette function at 256 points and upload to
--- an accelerate array for GPU-side interpolation.
+-- an accelerate array for device-side interpolation.
 uploadPalette :: Palette -> Acc (A.Vector GColor)
 uploadPalette pal =
   let n = 256 :: Int
@@ -71,7 +92,7 @@ uploadPalette pal =
 -- Core rendering
 ------------------------------------------------------------------------
 
--- | Render a style to a JuicyPixels image using the GPU.
+-- | Render a style to a JuicyPixels image using the accelerate backend.
 gpuRender :: [Effect]     -- ^ Post-processing effects (applied on CPU)
           -> String       -- ^ Style name
           -> Int          -- ^ Seed
@@ -84,7 +105,7 @@ gpuRender :: [Effect]     -- ^ Post-processing effects (applied on CPU)
 gpuRender effects styleName seed w h palette samples freqMul = do
   let styleFn = case gStyleByName styleName of
         Just s  -> s
-        Nothing -> error $ "GPU: unknown style: " ++ styleName
+        Nothing -> error $ "GPU: unknown style: " P.++ styleName
 
   -- Build the accelerate program
   let palArr  = uploadPalette palette
@@ -103,11 +124,11 @@ gpuRender effects styleName seed w h palette samples freqMul = do
            then gpuPixelAA styleFn palArr seedE freqE wf hf xi yi
            else gpuPixelNoAA styleFn palArr seedE freqE wf hf xi yi
 
-      -- Apply sRGB gamma correction on GPU
+      -- Apply sRGB gamma correction on device
       gammaPixels = A.map linearToSRGB8 pixels
 
-  -- Execute on GPU
-  let result = PTX.run gammaPixels :: A.Array DIM2 (Word8, Word8, Word8, Word8)
+  -- Execute via best available backend
+  let result = runAccelerate gammaPixels :: A.Array DIM2 (Word8, Word8, Word8, Word8)
 
   -- Convert to JuicyPixels Image
   img <- arrayToImage w h result
@@ -153,10 +174,10 @@ gpuPixelAA style palArr seed freq wf hf xi yi =
         ((b1+b2+b3+b4) * 0.25) ((a1+a2+a3+a4) * 0.25)
 
 ------------------------------------------------------------------------
--- sRGB gamma (GPU-side)
+-- sRGB gamma (device-side)
 ------------------------------------------------------------------------
 
--- | Convert a linear-space GColor to sRGB Word8 RGBA on the GPU.
+-- | Convert a linear-space GColor to sRGB Word8 RGBA.
 linearToSRGB8 :: Exp GColor -> Exp (Word8, Word8, Word8, Word8)
 linearToSRGB8 (T4 cr cg cb ca) =
   let gamma v =
@@ -200,7 +221,7 @@ arrayToImage w h arr = do
 -- File output
 ------------------------------------------------------------------------
 
--- | Render with GPU and write directly to a PNG file.
+-- | Render with accelerate and write directly to a PNG file.
 gpuRenderToFile :: [Effect] -> FilePath -> String -> Int -> Int
                 -> Palette -> Int -> Double -> IO ()
 gpuRenderToFile effects path styleName seed w h palette samples freq = do
