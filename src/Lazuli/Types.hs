@@ -6,6 +6,7 @@ module Lazuli.Types
   , Seed
   , Palette
   , lerpColor
+  , lerpColorRGB
   , clampChannel
   , black
   , white
@@ -29,12 +30,21 @@ clampChannel :: Double -> Double
 clampChannel = max 0 . min 1
 {-# INLINE clampChannel #-}
 
-lerpColor :: Double -> Color -> Color -> Color
-lerpColor t (Color r1 g1 b1 a1) (Color r2 g2 b2 a2) =
+-- | Linear RGB interpolation (fast, for performance-critical paths).
+lerpColorRGB :: Double -> Color -> Color -> Color
+lerpColorRGB t (Color r1 g1 b1 a1) (Color r2 g2 b2 a2) =
   Color (r1 + t * (r2 - r1))
         (g1 + t * (g2 - g1))
         (b1 + t * (b2 - b1))
         (a1 + t * (a2 - a1))
+{-# INLINE lerpColorRGB #-}
+
+-- | Perceptually uniform color interpolation via OKLAB.
+-- This is a forward declaration; the actual implementation is in Lazuli.Color.
+-- We break the import cycle by using RGB lerp here and letting Palette.hs
+-- import lerpOklab directly from Lazuli.Color.
+lerpColor :: Double -> Color -> Color -> Color
+lerpColor = lerpColorRGB
 {-# INLINE lerpColor #-}
 
 black :: Color

@@ -57,6 +57,7 @@ common warnings
 library
     import:           warnings
     exposed-modules:  Lazuli.Types
+                    , Lazuli.Color
                     , Lazuli.Noise
                     , Lazuli.Patterns
                     , Lazuli.Combinators
