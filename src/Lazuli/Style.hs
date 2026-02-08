@@ -123,67 +123,123 @@ inkStyle seed pal freqMul =
 
     colored = applyPalette pal (smoothstep 0.1 0.9 combined)
 
--- | Fluted glass: architectural glass panels with smooth gradient behind them.
--- Perfectly straight, evenly-spaced vertical panels with 3D convex shading,
--- dark gaps, and subtle chromatic refraction.
+-- | Fluted glass: physically-based cylindrical lens refraction.
+-- Each vertical flute is a cylindrical lens that bends light via Snell's law,
+-- producing visible background distortion, chromatic dispersion from wavelength-
+-- dependent refractive indices, Fresnel edge highlights, specular streaks,
+-- and 3D convex shading.
+-- Flute count scales with --freq (60 at freq=1.0, 120 at freq=2.0, etc.).
 flutedStyle :: Style
 flutedStyle seed pal freqMul =
-  vignette 0.15 finalImage
+  vignette 0.12 finalImage
   where
     f = freqMul
 
-    -- SMOOTH background: low-frequency simplex, NOT fbm with warping.
-    -- A gentle color wash that the glass panels structure.
-    bgSmooth = simplex seed (0.8 * f)
-    bgVariation = simplex (seed + 1) (0.5 * f)
-    background = \(x, y) ->
-      let base = bgSmooth (x, y)
-          vary = bgVariation (x, y) * 0.2
-          t = clamp01 (base * 0.7 + vary + 0.15)
+    -- Background with enough mid-frequency structure that the lens
+    -- distortion has colour transitions to visibly bend and repeat.
+    bgBase   = simplex seed       (1.2 * f)   -- main colour field
+    bgMid    = simplex (seed + 1) (2.5 * f)   -- mid-freq bands
+    bgFine   = simplex (seed + 2) (5.0 * f)   -- fine detail
+    bgSweep  = simplex (seed + 3) (0.4 * f)   -- slow wash
+    background (x, y) =
+      let b  = bgBase  (x, y)
+          m  = bgMid   (x, y) * 0.30
+          fn = bgFine  (x, y) * 0.12
+          sw = bgSweep (x, y) * 0.15
+          t  = clamp01 (b * 0.40 + m + fn + sw + 0.10)
       in pal t
 
-    -- Panel parameters
-    numPanels = 20.0 * f
-    gapWidth = 0.008 / f  -- thin dark gap between panels
+    -- Flute geometry: 60 at default freq; --freq 0.5 → 30 wide, --freq 2 → 120 thin
+    numFlutes = 60.0 * f
+
+    -- Cauchy dispersion: exaggerated slightly for visible chromatic aberration
+    nR = 1.500
+    nG = 1.520
+    nB = 1.545
+
+    -- Displacement scale: fixed fraction of the image width, NOT coupled
+    -- to flute width.  This keeps distortion visible regardless of flute count.
+    refractScale = 0.18
+
+    -- Snell's law cylindrical lens refraction.
+    -- u ∈ [-1,1]: centred position within flute, n: refractive index.
+    lensRefract n u =
+      let u'      = max (-0.97) (min 0.97 u)
+          alpha   = asin u'
+          sinBeta = sin alpha / n
+          beta    = asin sinBeta
+          delta   = alpha - beta
+      in delta * refractScale
 
     finalImage (x, y) =
-      let -- Which panel are we in? Simple division, NO noise on position
-          panelFloat = x * numPanels
-          panelIndex = floor panelFloat :: Int
-          -- Position within panel: 0.0 = left edge, 1.0 = right edge
-          posInPanel = panelFloat - fromIntegral panelIndex
+      let fluteFloat = x * numFlutes
+          posInFlute = fluteFloat - fromIntegral (floor fluteFloat :: Int)
 
-          -- Gap detection: are we in the dark gap between panels?
-          halfGap = gapWidth * numPanels * 0.5
-          isGap = posInPanel < halfGap
-                  || posInPanel > (1.0 - halfGap)
+          -- Centred position [-1, 1]
+          u = posInFlute * 2.0 - 1.0
 
-          -- 3D panel shading: convex shape, bright center, dark edges
-          centered = posInPanel * 2.0 - 1.0
-          panelShading = 1.0 - 0.3 * centered * centered
+          -- Thin seam where two convex surfaces meet (optical fold).
+          edgeDist  = min posInFlute (1.0 - posInFlute)
+          seamWidth = 0.030
+          seamFade  = ss 0.0 seamWidth edgeDist
 
-          -- Subtle refraction: smooth sinusoidal displacement per panel position
-          refractionStrength = 0.015
-          dx = sin (posInPanel * pi) * refractionStrength
-          -- Chromatic dispersion: tiny per-channel offset
-          dxR = dx * 0.8
-          dxG = dx * 1.0
-          dxB = dx * 1.25
+          -- Per-channel refraction (chromatic dispersion)
+          dxR = lensRefract nR u
+          dxG = lensRefract nG u
+          dxB = lensRefract nB u
 
-          -- Sample the smooth background at slightly different x positions per channel
-          Color rR _ _ _ = background (x + dxR, y)
-          Color _ gG _ _ = background (x + dxG, y)
-          Color _ _ bB _ = background (x + dxB, y)
+          -- Sample background through the cylindrical lens
+          Color rR _  _  _ = background (x + dxR, y)
+          Color _  gG _  _ = background (x + dxG, y)
+          Color _  _  bB _ = background (x + dxB, y)
 
-          -- Apply panel shading
-          shadedR = rR * panelShading
-          shadedG = gG * panelShading
-          shadedB = bB * panelShading
+          -- Glass transmission: cosine-power falloff models the steep
+          -- drop in transmitted light at the flute edges.  Physically this
+          -- combines Fresnel transmission loss, longer optical path through
+          -- glass, and divergent-ray light spreading.  The result is that
+          -- the dominant background colour is pulled down hard at the edges
+          -- while the centre stays bright and clear.
+          cosTheta     = sqrt (max 0.03 (1.0 - u * u))
+          transmission = cosTheta ** 1.2
 
-      in if isGap
-         then let Color cr cg cb _ = background (x, y)
-              in Color (cr * 0.15) (cg * 0.15) (cb * 0.15) 1.0
-         else Color (min 1.0 shadedR) (min 1.0 shadedG) (min 1.0 shadedB) 1.0
+          -- Specular: multiplicative brightness boost in the reflected band.
+          -- Brightens the refracted colour itself rather than overlaying white.
+          specU     = u - 0.1
+          specPower = max 0 (1.0 - 4.0 * specU * specU) ** 12
+          specBoost = 1.0 + specPower * 0.20
+
+          -- Combined shade: transmission × specular
+          shade = transmission * specBoost
+
+          -- Base refracted colour with shading
+          baseR = rR * shade
+          baseG = gG * shade
+          baseB = bB * shade
+
+          -- Fresnel reflection via screen blending: base + f·(1 - base).
+          -- Adds a thin bright rim at the very edge of each flute without
+          -- washing out the colour or fighting the transmission darkening.
+          fresnelAmt = (0.04 + 0.96 * (1.0 - cosTheta) ** 5) * 0.50
+          litR = baseR + fresnelAmt * (1.0 - baseR)
+          litG = baseG + fresnelAmt * (1.0 - baseG)
+          litB = baseB + fresnelAmt * (1.0 - baseB)
+
+          -- Seam: dark but not black, still shows attenuated background
+          Color sR sGv sBv _ = background (x, y)
+          seamR = sR  * 0.30
+          seamG = sGv * 0.30
+          seamB = sBv * 0.30
+
+          finalR = seamFade * litR + (1.0 - seamFade) * seamR
+          finalG = seamFade * litG + (1.0 - seamFade) * seamG
+          finalB = seamFade * litB + (1.0 - seamFade) * seamB
+
+      in Color (min 1.0 finalR) (min 1.0 finalG) (min 1.0 finalB) 1.0
+
+    -- Local smoothstep (operates on values, not fields)
+    ss e0 e1 v =
+      let t = max 0 (min 1 ((v - e0) / (e1 - e0)))
+      in t * t * (3 - 2 * t)
 
 -- | Turbulence-driven marble veining with hot emission spots.
 magmaStyle :: Style
