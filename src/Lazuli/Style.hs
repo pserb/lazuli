@@ -124,35 +124,63 @@ inkStyle seed pal freqMul =
     colored = applyPalette pal (smoothstep 0.1 0.9 combined)
 
 -- | Fluted glass: smooth gradient viewed through cylindrical lens array.
--- Sinusoidal UV distortion with Fresnel darkening and caustic highlights.
+-- Physically-based refraction with chromatic dispersion, Schlick's Fresnel,
+-- Gaussian caustics, and surface imperfections.
 flutedStyle :: Style
 flutedStyle seed pal freqMul =
   vignette 0.2 finalImage
   where
     f = freqMul
-    -- Background: smooth warped gradient
+
+    -- Background: smooth warped gradient (unchanged)
     bgNoise = fbm 4 seed (2.0 * f)
     bgWarped = warp (simplex (seed+1) (1.5 * f)) (simplex (seed+2) (1.5 * f)) 0.2 bgNoise
     background = applyPalette pal (power 0.8 bgWarped)
 
     -- Fluted glass parameters
-    numRibs = 12.0 * f
-    strength = 0.04
+    numRibs = 14.0 * f
+    baseStrength = 0.05  -- base refraction displacement
 
-    finalImage = \(x, y) ->
-      let phase = x * numRibs * 2.0 * pi
-          -- Refraction displacement
-          dx = cos phase * strength
-          -- Sample background through displaced coords
-          Color cr cg cb ca = background (x + dx, y)
-          -- Fresnel: edges of ribs are darker
-          ribPhase = sin phase
-          fresnel = 0.7 + 0.3 * ribPhase * ribPhase
-          -- Caustic highlights at rib centers
-          caustic = (sin phase) ** 8 * 0.08
-      in Color (min 1 (cr * fresnel + caustic))
-               (min 1 (cg * fresnel + caustic))
-               (min 1 (cb * fresnel + caustic)) ca
+    -- Surface imperfection: subtle noise on ridge positions
+    surfaceNoise = simplex (seed+10) (30.0 * f)
+
+    finalImage (x, y) =
+      let -- Ridge phase with surface imperfection
+          imperfection = surfaceNoise (x, y) * 0.02
+          phase = (x + imperfection) * numRibs * 2.0 * pi
+
+          -- Ridge shape: how far from center of current ridge
+          ridgePos = abs (sin (phase / 2.0))
+
+          -- Refraction displacement (lens curvature)
+          lensDisplacement = cos phase * baseStrength
+
+          -- Chromatic dispersion: different IOR per channel
+          dxR = lensDisplacement * 0.85   -- IOR_red ~ 1.45
+          dxG = lensDisplacement * 1.00   -- IOR_green ~ 1.47
+          dxB = lensDisplacement * 1.20   -- IOR_blue ~ 1.49
+
+          -- Sample background at three different positions (one per channel)
+          Color rR _ _ _ = background (x + dxR, y)
+          Color _ gG _ _ = background (x + dxG, y)
+          Color _ _ bB _ = background (x + dxB, y)
+
+          -- Fresnel effect (Schlick's approximation, F0 for glass ~ 0.04)
+          f0 = 0.04
+          cosTheta = abs (cos phase)
+          fresnel = f0 + (1.0 - f0) * (1.0 - cosTheta) ** 5.0
+          transmission = 1.0 - fresnel * 0.5
+
+          -- Caustic: Gaussian-shaped light convergence at ridge centers
+          causticRaw = exp (-ridgePos * ridgePos * 8.0)
+          caustic = causticRaw * 0.12
+
+          -- Combine
+          finalR = min 1.0 (rR * transmission + caustic)
+          finalG = min 1.0 (gG * transmission + caustic)
+          finalB = min 1.0 (bB * transmission + caustic)
+
+      in Color finalR finalG finalB 1.0
 
 -- | Turbulence-driven marble veining with hot emission spots.
 magmaStyle :: Style
@@ -172,38 +200,68 @@ magmaStyle seed pal freqMul =
     hotColor = applyPalette pal (power 0.5 turb)
     hotSpots = mask hotMask (constColor (Color 0 0 0 0)) hotColor
 
--- | Apple/iOS-style mesh gradient: smooth Gaussian blobs.
--- N blobs at seed-determined positions blend with normalized weights.
+-- | Mesh gradient: anisotropic rotated Gaussian blobs with domain warping
+-- for organic, designer-quality color fields.
 meshStyle :: Style
 meshStyle seed pal freqMul =
-  vignette 0.15 meshGrad
+  vignette 0.12 meshGrad
   where
-    -- Frequency controls blob density: more freq = more blobs, tighter falloff
-    numBlobs = max 3 (round (5.0 * freqMul) :: Int)
-    sigmaBase = 0.18 / freqMul
+    -- More blobs for richer gradients
+    numBlobs = max 4 (round (7.0 * freqMul) :: Int)
+
+    -- Two warping fields to make blobs asymmetric and organic
+    warpFieldX = simplex (seed + 100) (1.2 * freqMul)
+    warpFieldY = simplex (seed + 101) (1.2 * freqMul)
+    warpAmt = 0.15
+
     blobs = [ let (bx, _) = hash2DStyle (seed + i * 3) 0
                   (by, _) = hash2DStyle (seed + i * 3 + 1) 0
                   (ci, _) = hash2DStyle (seed + i * 3 + 2) 0
-                  cx = 0.15 + bx * 0.7
-                  cy = 0.15 + by * 0.7
-                  sigma = sigmaBase + ci * (0.12 / freqMul)
-              in (cx, cy, sigma, ci)
+                  -- Position: keep away from exact edges
+                  cx = 0.1 + bx * 0.8
+                  cy = 0.1 + by * 0.8
+                  -- Anisotropic sigma: each blob has different width in X vs Y
+                  (aspect, _) = hash2DStyle (seed + i * 3 + 10) 0
+                  baseSigma = 0.15 / freqMul + ci * (0.15 / freqMul)
+                  sigmaX = baseSigma * (0.7 + aspect * 0.6)
+                  sigmaY = baseSigma * (1.3 - aspect * 0.6)
+                  -- Rotation angle for each blob
+                  (rot, _) = hash2DStyle (seed + i * 3 + 20) 0
+                  angle = rot * pi  -- 0 to pi
+              in (cx, cy, sigmaX, sigmaY, angle, ci)
             | i <- [0 .. numBlobs - 1]
             ]
 
     meshGrad (x, y) =
-      let weights = [ let ddx = x - cx
-                          ddy = y - cy
-                          d2 = ddx * ddx + ddy * ddy
-                      in (exp (negate d2 / (2.0 * sigma * sigma)), palT)
-                    | (cx, cy, sigma, palT) <- blobs
+      let -- Warp the coordinate space for organic flow
+          wx = warpFieldX (x, y) * warpAmt
+          wy = warpFieldY (x, y) * warpAmt
+          x' = x + wx
+          y' = y + wy
+
+          weights = [ let -- Rotate coordinates relative to blob center
+                          ddx = x' - cx
+                          ddy = y' - cy
+                          cosA = cos angle
+                          sinA = sin angle
+                          rx = ddx * cosA + ddy * sinA
+                          ry = -ddx * sinA + ddy * cosA
+                          -- Anisotropic Gaussian
+                          d2 = (rx / sigmaX) ** 2 + (ry / sigmaY) ** 2
+                          w = exp (negate d2 / 2.0)
+                      in (w, palT)
+                    | (cx, cy, sigmaX, sigmaY, angle, palT) <- blobs
                     ]
+
           totalWeight = max 1e-10 (sum (map fst weights))
+
+          -- Weighted color blend
           blended = foldl addW (Color 0 0 0 0) weights
           addW (Color r1 g1 b1 a1) (w, palT) =
             let Color cr cg cb ca = pal palT
                 s = w / totalWeight
             in Color (r1 + cr * s) (g1 + cg * s) (b1 + cb * s) (a1 + ca * s)
+
       in blended
 
 ------------------------------------------------------------------------
